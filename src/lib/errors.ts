@@ -70,6 +70,14 @@ export function commanderErrorToCliError(error: CommanderError) {
     })
   }
 
+  if (isCliErrorCode(error.code)) {
+    return new CliError(error.message, {
+      code: error.code,
+      exitCode: exitCodeForCliErrorCode(error.code),
+      details: { commanderCode: error.code },
+    })
+  }
+
   return new CliError(error.message, {
     code: 'COMMAND_ERROR',
     exitCode: ExitCode.RuntimeError,
@@ -141,4 +149,32 @@ export function toCliError(error: unknown): CliError {
   return new CliError('Unexpected CLI failure', {
     details: error,
   })
+}
+
+function isCliErrorCode(value: unknown): value is CliErrorCode {
+  return typeof value === 'string' && [
+    'AUTH_REQUIRED',
+    'COMMAND_ERROR',
+    'CONFIG_ERROR',
+    'HTTP_ERROR',
+    'INVALID_FOLDER_PATH',
+    'INVALID_SERVICE_URL',
+    'QUOTA_EXCEEDED',
+    'RUNTIME_ERROR',
+    'WORKSPACE_AMBIGUOUS',
+    'WORKSPACE_NOT_FOUND',
+    'WORKSPACE_REQUIRED',
+  ].includes(value)
+}
+
+function exitCodeForCliErrorCode(code: CliErrorCode): ExitCodeValue {
+  if (code === 'AUTH_REQUIRED') {
+    return ExitCode.AuthFailure
+  }
+
+  if (code === 'QUOTA_EXCEEDED') {
+    return ExitCode.QuotaExceeded
+  }
+
+  return ExitCode.RuntimeError
 }

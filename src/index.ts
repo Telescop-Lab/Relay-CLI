@@ -32,8 +32,7 @@ async function main() {
     await program.parseAsync(process.argv)
   } catch (error) {
     if (isCommanderHelpDisplay(error)) {
-      process.exitCode = 0
-      return
+      process.exit(0)
     }
 
     const runtime = await createRuntime(readGlobalOptionsFromArgv(process.argv.slice(2)))
@@ -42,7 +41,7 @@ async function main() {
       : toCliError(error)
 
     runtime.output.renderError(cliError, { debug: runtime.options.debug })
-    process.exitCode = cliError.exitCode
+    process.exit(cliError.exitCode)
   }
 }
 

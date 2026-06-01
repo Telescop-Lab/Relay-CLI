@@ -1,5 +1,15 @@
 import { Command } from 'commander'
 
+import { createConfigCommand } from './config.js'
+import {
+  createLoginCommand,
+  createLogoutCommand,
+  createSignupCommand,
+  createWhoAmICommand,
+} from './auth.js'
+import { createDevicesCommand } from './devices.js'
+import { createFolderCommand } from './folders.js'
+import { createWorkspaceCommand } from './workspaces.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 
 type RootOptions = {
@@ -26,6 +36,16 @@ export function createRootCommand(version: string) {
     outputError: () => {},
   })
 
+  program
+    .addCommand(createConfigCommand())
+    .addCommand(createSignupCommand())
+    .addCommand(createLoginCommand())
+    .addCommand(createLogoutCommand())
+    .addCommand(createWhoAmICommand())
+    .addCommand(createDevicesCommand())
+    .addCommand(createWorkspaceCommand())
+    .addCommand(createFolderCommand())
+
   program.action(async (_options, command: Command) => {
     const runtime = await getCommandRuntime(command)
     const options = command.optsWithGlobals() as RootOptions
@@ -42,15 +62,18 @@ export function createRootCommand(version: string) {
     'after',
     [
       '',
-      'Phase 1 and Phase 2 are wired in this build:',
-      '  - single entrypoint and exit-code aware runtime',
-      '  - --help / --version / --json / --debug globals',
-      '  - config and credential stores',
-      '  - HTTP transport and workspace resolution helpers',
-      '  - output, prompt, path, glob, and folder-path utilities',
+      'Implemented now:',
+      '  config set url',
+      '  signup',
+      '  login',
+      '  logout',
+      '  whoami',
+      '  devices list',
+      '  ws list/use/create/info/delete',
+      '  folder list',
       '',
       'Business commands land in the next phases:',
-      '  config, signup, login, logout, whoami, devices, ws, folder, bundle, history, storage, export',
+      '  bundle, history, storage, export',
     ].join('\n'),
   )
 

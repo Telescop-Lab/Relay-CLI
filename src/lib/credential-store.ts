@@ -183,6 +183,13 @@ export class CredentialStore {
     return summaries[toServiceKey(serviceUrl)] ?? null
   }
 
+  clearSessionSummary(serviceUrl: string) {
+    const serviceKey = toServiceKey(serviceUrl)
+    const summaries = this.store.get('summaries')
+    delete summaries[serviceKey]
+    this.store.set('summaries', summaries)
+  }
+
   setSessionSummary(summary: SessionSummary | null) {
     if (!summary) {
       return

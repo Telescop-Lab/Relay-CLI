@@ -3,6 +3,7 @@ export interface SessionSummary {
   updatedAt: string
   userId: string | null
   username: string | null
+  email: string | null
   deviceId: string | null
   deviceName: string | null
   hasBinding: boolean

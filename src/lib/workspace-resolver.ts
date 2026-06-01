@@ -20,14 +20,20 @@ export async function resolveWorkspaceReference(options: ResolveWorkspaceOptions
     })
   }
 
-  const response = await options.client.requestJson<RelayApiWorkspacesResponse>({
-    path: '/api/workspaces',
-    accessToken: options.accessToken,
-  })
+  const workspaces = await fetchWorkspaces(options.client, options.accessToken)
 
-  return matchWorkspaceReference(response.data.workspaces, reference, {
+  return matchWorkspaceReference(workspaces, reference, {
     matchedBy: options.explicitReference ? 'id' : 'default',
   })
+}
+
+export async function fetchWorkspaces(client: RelayHttpClient, accessToken: string) {
+  const response = await client.requestJson<RelayApiWorkspacesResponse>({
+    path: '/api/workspaces',
+    accessToken,
+  })
+
+  return response.data.workspaces
 }
 
 export function matchWorkspaceReference(
