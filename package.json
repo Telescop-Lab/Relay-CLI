@@ -1,0 +1,28 @@
+{
+  "name": "relay-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "relay": "dist/index.js"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "conf": "^14.0.0",
+    "fast-glob": "^3.3.3",
+    "ora": "^8.2.0",
+    "relay": "file:..",
+    "undici": "^6.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.7.2"
+  }
+}
