@@ -1,19 +1,13 @@
 import { Command } from 'commander'
 
+import { flattenFolderTree, fetchFolderTree, renderFolderTreeLines } from '../lib/folder-tree.js'
 import { requireAuthenticatedService } from '../lib/service-context.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 import { resolveWorkspaceReference } from '../lib/workspace-resolver.js'
-import type { RelayApiFolderNode, RelayApiFoldersResponse } from '../transport/types.js'
 
 type FolderListOptions = {
   workspace?: string
   tree?: boolean
-}
-
-type FolderListRecord = {
-  path: string
-  parentPath: string | null
-  bundleCount: number
 }
 
 export function createFolderCommand() {
@@ -34,11 +28,8 @@ export function createFolderCommand() {
         client,
         accessToken,
       })
-      const response = await client.requestJson<RelayApiFoldersResponse>({
-        path: `/api/workspaces/${workspace.id}/folders`,
-        accessToken,
-      })
-      const flattened = flattenFolders(response.data.folders)
+      const folders = await fetchFolderTree(client, accessToken, workspace.id)
+      const flattened = flattenFolderTree(folders)
 
       if (runtime.options.json) {
         runtime.output.writeJson(flattened)
@@ -47,7 +38,7 @@ export function createFolderCommand() {
 
       if (options.tree) {
         runtime.output.writeLine('/')
-        for (const line of renderTree(response.data.folders)) {
+        for (const line of renderFolderTreeLines(folders)) {
           runtime.output.writeLine(line)
         }
         return
@@ -62,38 +53,4 @@ export function createFolderCommand() {
     })
 
   return folder
-}
-
-function flattenFolders(folders: RelayApiFolderNode[], parentPath = '/'): FolderListRecord[] {
-  const records: FolderListRecord[] = []
-
-  for (const folder of folders) {
-    const path = joinFolderPath(parentPath, folder.name)
-    records.push({
-      path,
-      parentPath: parentPath === '/' ? null : parentPath,
-      bundleCount: folder.bundleCount,
-    })
-    records.push(...flattenFolders(folder.children, path))
-  }
-
-  return records.sort((left, right) => left.path.localeCompare(right.path))
-}
-
-function renderTree(folders: RelayApiFolderNode[], prefix = ''): string[] {
-  const lines: string[] = []
-
-  folders.forEach((folder, index) => {
-    const isLast = index === folders.length - 1
-    const connector = isLast ? '└─' : '├─'
-    lines.push(`${prefix}${connector} ${folder.name} (${folder.bundleCount})`)
-    const childPrefix = `${prefix}${isLast ? '   ' : '│  '}`
-    lines.push(...renderTree(folder.children, childPrefix))
-  })
-
-  return lines
-}
-
-function joinFolderPath(parentPath: string, name: string) {
-  return parentPath === '/' ? `/${name}` : `${parentPath}/${name}`
 }

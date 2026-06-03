@@ -17,7 +17,7 @@ type RequestOptions = {
   timeoutMs?: number
 }
 
-type ResponseEnvelope<T> = {
+export type ResponseEnvelope<T> = {
   data: T
   status: number
   headers: Headers

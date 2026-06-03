@@ -1,12 +1,21 @@
+import fs from 'node:fs/promises'
+
 import { Command } from 'commander'
 
 import type { WorkspaceRecord } from '../domain/workspace.js'
-import { CliError } from '../lib/errors.js'
-import { confirm } from '../lib/prompts.js'
+import { editTextInEditor } from '../lib/editor.js'
+import { CliError, isCliError } from '../lib/errors.js'
+import { resolveCliPath } from '../lib/files.js'
+import { confirm, readStdin } from '../lib/prompts.js'
 import { requireAuthenticatedService } from '../lib/service-context.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 import { fetchWorkspaces, resolveWorkspaceReference } from '../lib/workspace-resolver.js'
-import type { RelayApiSuccessResponse, RelayApiWorkspaceResponse } from '../transport/types.js'
+import type {
+  RelayApiSuccessResponse,
+  RelayApiWorkspaceMessage,
+  RelayApiWorkspaceMessageResponse,
+  RelayApiWorkspaceResponse,
+} from '../transport/types.js'
 
 type WorkspaceListOptions = {
   workspace?: string
@@ -22,9 +31,23 @@ type WorkspaceDeleteOptions = {
   yes?: boolean
 }
 
+type WorkspaceMessageOptions = {
+  workspace?: string
+}
+
+type WorkspaceMessageSetOptions = WorkspaceMessageOptions & {
+  file?: string
+  stdin?: boolean
+  force?: boolean
+}
+
 export function createWorkspaceCommand() {
   const ws = new Command('ws')
     .description('Manage workspaces')
+
+  const message = ws
+    .command('message')
+    .description('Read and update workspace_message content')
 
   ws
     .command('list')
@@ -206,9 +229,135 @@ export function createWorkspaceCommand() {
 
   deleteCommand.alias('remove')
 
+  message
+    .command('show')
+    .description('Show the current workspace_message content')
+    .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
+    .action(async (options: WorkspaceMessageOptions, command: Command) => {
+      const runtime = await getCommandRuntime(command)
+      const { client, accessToken } = await requireAuthenticatedService(runtime)
+      const workspace = await resolveWorkspaceReference({
+        explicitReference: options.workspace,
+        config: runtime.config,
+        client,
+        accessToken,
+      })
+      const response = await client.requestJson<RelayApiWorkspaceMessageResponse>({
+        path: `/api/workspaces/${workspace.id}/message`,
+        accessToken,
+      })
+      const workspaceMessage = unwrapWorkspaceMessage(response.data)
+
+      if (runtime.options.json) {
+        runtime.output.writeJson({ workspace, workspaceMessage })
+        return
+      }
+
+      if (workspaceMessage.content.length > 0) {
+        process.stdout.write(workspaceMessage.content)
+      }
+      if (!workspaceMessage.content.endsWith('\n')) {
+        runtime.output.writeLine()
+      }
+    })
+
+  message
+    .command('set')
+    .description('Update workspace_message content')
+    .option('--workspace <workspace-id|name>', 'Workspace to update instead of the local default')
+    .option('--file <path>', 'Read message content from a local file')
+    .option('--stdin', 'Read message content from standard input')
+    .option('--force', 'Override optimistic locking if the message changed remotely')
+    .action(async (options: WorkspaceMessageSetOptions, command: Command) => {
+      if (options.file && options.stdin) {
+        throw new CliError('Use either --file or --stdin, not both')
+      }
+
+      const runtime = await getCommandRuntime(command)
+      const { client, accessToken } = await requireAuthenticatedService(runtime)
+      const workspace = await resolveWorkspaceReference({
+        explicitReference: options.workspace,
+        config: runtime.config,
+        client,
+        accessToken,
+      })
+      const currentResponse = await client.requestJson<RelayApiWorkspaceMessageResponse>({
+        path: `/api/workspaces/${workspace.id}/message`,
+        accessToken,
+      })
+      const currentMessage = unwrapWorkspaceMessage(currentResponse.data)
+      const content = await readWorkspaceMessageContent(runtime.cwd, currentMessage, options)
+
+      try {
+        const response = await client.requestJson<RelayApiWorkspaceMessageResponse>({
+          method: 'PUT',
+          path: `/api/workspaces/${workspace.id}/message`,
+          accessToken,
+          body: {
+            content,
+            version: currentMessage.version,
+            force: Boolean(options.force),
+          },
+        })
+        const workspaceMessage = unwrapWorkspaceMessage(response.data)
+
+        if (runtime.options.json) {
+          runtime.output.writeJson({ workspace, workspaceMessage })
+          return
+        }
+
+        runtime.output.writeLine(`Updated workspace_message for ${workspace.name} (version ${workspaceMessage.version})`)
+      } catch (error) {
+        if (isCliError(error) && error.status === 409 && isWorkspaceMessageConflict(error.details)) {
+          throw new CliError('Workspace message conflict', {
+            code: 'WORKSPACE_MESSAGE_CONFLICT',
+            details: error.details,
+            hint: 'Re-run with --force to overwrite the latest remote version.',
+          })
+        }
+
+        throw error
+      }
+    })
+
   return ws
 }
 
 function matchesDefaultWorkspace(workspace: WorkspaceRecord, defaultWorkspace: string | null) {
   return Boolean(defaultWorkspace && (workspace.id === defaultWorkspace || workspace.name === defaultWorkspace))
+}
+
+async function readWorkspaceMessageContent(
+  cwd: string,
+  currentMessage: RelayApiWorkspaceMessage,
+  options: WorkspaceMessageSetOptions,
+) {
+  if (options.file) {
+    const filePath = resolveCliPath(options.file, cwd)
+    return await fs.readFile(filePath, 'utf8')
+  }
+
+  if (options.stdin) {
+    return await readStdin()
+  }
+
+  return await editTextInEditor(currentMessage.content)
+}
+
+function unwrapWorkspaceMessage(response: RelayApiWorkspaceMessageResponse): RelayApiWorkspaceMessage {
+  return response.workspace_message ?? response.workspaceMessage ?? response.note ?? {
+    content: '',
+    version: 0,
+    updatedByDeviceName: null,
+    updatedAt: null,
+  }
+}
+
+function isWorkspaceMessageConflict(details: unknown) {
+  return Boolean(
+    details &&
+      typeof details === 'object' &&
+      'code' in details &&
+      details.code === 'WORKSPACE_MESSAGE_CONFLICT',
+  )
 }

@@ -5,6 +5,7 @@ import { CliError } from '../lib/errors.js'
 import { readPassword, readStdin, promptText } from '../lib/prompts.js'
 import { createServiceClient, requireAuthenticatedService } from '../lib/service-context.js'
 import { getCommandRuntime } from '../lib/runtime.js'
+import type { ResponseEnvelope } from '../transport/http-client.js'
 import type {
   RelayApiAuthMeResponse,
   RelayApiAuthSessionResponse,
@@ -120,7 +121,7 @@ export function createLoginCommand() {
         return
       }
 
-      await finalizeLogin(runtime, serviceUrl, client, initialResponse as { data: RelayApiAuthSessionResponse; headers: Headers })
+      await finalizeLogin(runtime, serviceUrl, client, initialResponse as ResponseEnvelope<RelayApiAuthSessionResponse>)
     })
 }
 
@@ -222,7 +223,7 @@ async function finalizeLogin(
   runtime: Awaited<ReturnType<typeof getCommandRuntime>>,
   serviceUrl: string,
   client: ReturnType<typeof createServiceClient>['client'],
-  response: { data: RelayApiAuthSessionResponse; headers: Headers },
+  response: ResponseEnvelope<RelayApiAuthSessionResponse>,
 ) {
   const bindingSecret = await client.extractDeviceBinding(response.headers)
   const summary = await persistAuthenticatedSession({

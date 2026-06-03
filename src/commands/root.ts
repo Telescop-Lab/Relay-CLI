@@ -8,7 +8,11 @@ import {
   createWhoAmICommand,
 } from './auth.js'
 import { createDevicesCommand } from './devices.js'
+import { createBundleCommand } from './bundles.js'
+import { createExportCommand } from './export.js'
 import { createFolderCommand } from './folders.js'
+import { createHistoryCommand } from './history.js'
+import { createStorageCommand } from './storage.js'
 import { createWorkspaceCommand } from './workspaces.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 
@@ -45,6 +49,10 @@ export function createRootCommand(version: string) {
     .addCommand(createDevicesCommand())
     .addCommand(createWorkspaceCommand())
     .addCommand(createFolderCommand())
+    .addCommand(createBundleCommand())
+    .addCommand(createHistoryCommand())
+    .addCommand(createStorageCommand())
+    .addCommand(createExportCommand())
 
   program.action(async (_options, command: Command) => {
     const runtime = await getCommandRuntime(command)
@@ -70,10 +78,12 @@ export function createRootCommand(version: string) {
       '  whoami',
       '  devices list',
       '  ws list/use/create/info/delete',
+      '  ws message show/set',
       '  folder list',
-      '',
-      'Business commands land in the next phases:',
-      '  bundle, history, storage, export',
+      '  bundle inbox/list/show/pull/push/delete',
+      '  history',
+      '  storage stats',
+      '  export',
     ].join('\n'),
   )
 
