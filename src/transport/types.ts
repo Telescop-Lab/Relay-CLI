@@ -47,6 +47,7 @@ export interface RelayApiBundle {
   sizeBytes: number
   createdAt: string
   finalizedAt: string | null
+  deletedAt: string | null
   workspaceId: string
   folderId: string | null
   folderName: string | null

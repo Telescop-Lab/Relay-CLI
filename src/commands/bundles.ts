@@ -438,7 +438,7 @@ export function createBundleCommand() {
   const deleteCommand = bundle
     .command('delete <bundle-id>')
     .alias('rm')
-    .description('Delete a bundle and its stored files')
+    .description('Move a bundle to trash (recoverable for 30 days)')
     .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
     .option('--yes', 'Skip the local confirmation prompt')
     .action(async (bundleId: string, options: BundleDeleteOptions, command: Command) => {
@@ -457,7 +457,7 @@ export function createBundleCommand() {
       })
 
       if (!options.yes) {
-        const accepted = await confirm(`Delete bundle ${bundleResponse.data.bundle.id}? This cannot be undone`, false)
+        const accepted = await confirm(`Move bundle ${bundleResponse.data.bundle.id} to trash? It can be restored within 30 days`, false)
         if (!accepted) {
           if (runtime.options.json) {
             runtime.output.writeJson({ success: false, cancelled: true })
@@ -480,7 +480,7 @@ export function createBundleCommand() {
         return
       }
 
-      runtime.output.writeLine(`Deleted bundle ${bundleId}`)
+      runtime.output.writeLine(`Moved bundle ${bundleId} to trash (restore with undo within 30 days)`)
     })
 
   deleteCommand.alias('remove')
