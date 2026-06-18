@@ -11,11 +11,16 @@ type SessionIdentity = {
 type PersistAuthenticatedSessionOptions = SessionIdentity & {
   runtime: CliRuntime
   accessToken: string
+  refreshToken?: string | null
   bindingSecret?: string | null
 }
 
 export async function persistAuthenticatedSession(options: PersistAuthenticatedSessionOptions) {
   await options.runtime.credentials.setAccessToken(options.serviceUrl, options.accessToken)
+
+  if (options.refreshToken) {
+    await options.runtime.credentials.setRefreshToken(options.serviceUrl, options.refreshToken)
+  }
 
   if (options.bindingSecret) {
     await options.runtime.credentials.setDeviceBinding({

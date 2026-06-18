@@ -87,6 +87,26 @@ export class CredentialStore {
     this.store.set('currentServiceUrl', serviceKey)
   }
 
+  async getRefreshToken(serviceUrl: string) {
+    const serviceKey = toServiceKey(serviceUrl)
+    return this.getServiceRecord(serviceKey).refreshToken ?? null
+  }
+
+  async setRefreshToken(serviceUrl: string, refreshToken: string | null) {
+    const serviceKey = toServiceKey(serviceUrl)
+    const services = this.store.get('services')
+    const record = cloneServiceRecord(services[serviceKey])
+
+    if (refreshToken) {
+      record.refreshToken = refreshToken
+    } else {
+      delete record.refreshToken
+    }
+
+    services[serviceKey] = record
+    this.store.set('services', services)
+  }
+
   async getDeviceBinding(criteria: BindingLookup) {
     const serviceKey = toServiceKey(criteria.serviceUrl)
     const record = this.getServiceRecord(serviceKey)

@@ -87,6 +87,7 @@ export interface RelayApiAuthMeResponse {
 export interface RelayApiAuthSessionResponse {
   status?: 'OK'
   token: string
+  refreshToken?: string
   user: RelayApiUser
   device: RelayApiDevice
 }

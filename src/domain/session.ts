@@ -19,6 +19,7 @@ export interface StoredBindingRecord {
 
 export interface StoredServiceCredentials {
   accessToken?: string | null
+  refreshToken?: string | null
   bindings: StoredBindingRecord[]
 }
 

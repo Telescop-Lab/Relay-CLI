@@ -8,8 +8,50 @@ export function createServiceClient(runtime: CliRuntime, serviceUrl = runtime.co
     serviceUrl,
     client: new RelayHttpClient(serviceUrl, {
       debug: runtime.options.debug,
+      onTokenExpired: () => refreshAccessToken(runtime, serviceUrl),
     }),
   }
+}
+
+async function refreshAccessToken(runtime: CliRuntime, serviceUrl: string): Promise<string> {
+  const refreshToken = await runtime.credentials.getRefreshToken(serviceUrl)
+  if (!refreshToken) {
+    throw new CliError('Session expired — please log in again', {
+      code: 'AUTH_REQUIRED',
+      exitCode: ExitCode.AuthFailure,
+    })
+  }
+
+  const res = await fetch(`${serviceUrl}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  })
+
+  if (!res.ok) {
+    // Refresh token is also expired or revoked
+    await runtime.credentials.setAccessToken(serviceUrl, null)
+    await runtime.credentials.setRefreshToken(serviceUrl, null)
+    throw new CliError('Session expired — please log in again', {
+      code: 'AUTH_REQUIRED',
+      exitCode: ExitCode.AuthFailure,
+    })
+  }
+
+  const data = await res.json() as { token?: string; refreshToken?: string }
+  if (!data.token) {
+    throw new CliError('Session expired — please log in again', {
+      code: 'AUTH_REQUIRED',
+      exitCode: ExitCode.AuthFailure,
+    })
+  }
+
+  await runtime.credentials.setAccessToken(serviceUrl, data.token)
+  if (data.refreshToken) {
+    await runtime.credentials.setRefreshToken(serviceUrl, data.refreshToken)
+  }
+
+  return data.token
 }
 
 export async function requireAuthenticatedService(runtime: CliRuntime) {

@@ -26,11 +26,16 @@ export type ResponseEnvelope<T> = {
 export class RelayHttpClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly options: { debug?: boolean; userAgent?: string } = {},
+    private readonly options: {
+      debug?: boolean
+      userAgent?: string
+      /** Called when the server returns TOKEN_EXPIRED. Should return a new access token (or throw). */
+      onTokenExpired?: () => Promise<string>
+    } = {},
   ) {}
 
   async requestJson<T>(options: RequestOptions): Promise<ResponseEnvelope<T>> {
-    const response = await this.request(options)
+    const response = await this.requestWithRefresh(options)
     return {
       data: response.body as T,
       status: response.status,
@@ -39,7 +44,7 @@ export class RelayHttpClient {
   }
 
   async requestVoid(options: RequestOptions) {
-    await this.request(options)
+    await this.requestWithRefresh(options)
   }
 
   async extractDeviceBinding(headers: Headers) {
@@ -55,6 +60,34 @@ export class RelayHttpClient {
     }
 
     return null
+  }
+
+  private async requestWithRefresh(options: RequestOptions, isRetry = false): Promise<{
+    status: number
+    headers: Headers
+    body: unknown
+  }> {
+    try {
+      return await this.request(options)
+    } catch (error) {
+      // Only attempt refresh once, and only for 401 TOKEN_EXPIRED
+      if (
+        !isRetry &&
+        isCliError(error) &&
+        (error.status === 401 || error.status === 403) &&
+        this.options.onTokenExpired &&
+        options.accessToken
+      ) {
+        try {
+          const newToken = await this.options.onTokenExpired()
+          return await this.requestWithRefresh({ ...options, accessToken: newToken }, true)
+        } catch {
+          // Refresh failed — let the original error surface
+        }
+      }
+
+      throw error
+    }
   }
 
   private async request(options: RequestOptions) {
