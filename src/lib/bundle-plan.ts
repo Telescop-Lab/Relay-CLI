@@ -34,11 +34,53 @@ export async function createBundleUploadPlan(source: string, cwd = process.cwd()
     throw new CliError(`No files found for ${trimmedSource}`)
   }
 
+  const deduped = dedupBundleFiles(files)
+
   return {
     source: trimmedSource,
-    files,
-    totalBytes: files.reduce((sum, file) => sum + file.sizeBytes, 0),
+    files: deduped,
+    totalBytes: deduped.reduce((sum, file) => sum + file.sizeBytes, 0),
   }
+}
+
+/**
+ * Ensure every file inside a bundle has a unique path.
+ *
+ * Collision key = `relativePath ?? name`.  When duplicate keys are detected
+ * (e.g. two files both claiming `results.csv`), later entries receive a
+ * `_1`, `_2`, … suffix before the extension so that every staged entry
+ * has a unique key inside the bundle.
+ *
+ * Matches the Web-side `deduplicateIncoming` in `BundleStaging/index.tsx`.
+ */
+function dedupBundleFiles(files: PlannedBundleFile[]): PlannedBundleFile[] {
+  const used = new Set<string>()
+  const result: PlannedBundleFile[] = []
+
+  for (const file of files) {
+    const baseKey = file.relativePath ?? file.name
+    let resolvedKey = baseKey
+
+    if (used.has(resolvedKey)) {
+      const dotIndex = resolvedKey.lastIndexOf('.')
+      const stem = dotIndex === -1 ? resolvedKey : resolvedKey.slice(0, dotIndex)
+      const ext = dotIndex === -1 ? '' : resolvedKey.slice(dotIndex)
+      let counter = 1
+      do {
+        resolvedKey = `${stem}_${counter}${ext}`
+        counter += 1
+      } while (used.has(resolvedKey))
+    }
+
+    used.add(resolvedKey)
+    result.push(
+      resolvedKey === baseKey
+        ? file
+        : { ...file, relativePath: file.relativePath === null ? resolvedKey : resolvedKey },
+    )
+  }
+
+  return result
 }
 
 async function planFromPath(inputPath: string, cwd: string) {
