@@ -260,6 +260,7 @@ function bindingAccount(serviceKey: string, binding: Pick<StoredBindingRecord, '
 function cloneServiceRecord(record?: StoredServiceCredentials): StoredServiceCredentials {
   return {
     accessToken: record?.accessToken ?? null,
+    refreshToken: record?.refreshToken ?? null,
     bindings: [...(record?.bindings ?? [])],
   }
 }
