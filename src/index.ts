@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 import { createRootCommand } from './commands/root.js'
 import {
   commanderErrorToCliError,
@@ -13,18 +9,8 @@ import {
 } from './lib/errors.js'
 import { createRuntime, readGlobalOptionsFromArgv } from './lib/runtime.js'
 
-async function readPackageVersion() {
-  const currentFile = fileURLToPath(import.meta.url)
-  const packageJsonPath = path.resolve(path.dirname(currentFile), '../package.json')
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
-    version?: string
-  }
-
-  return packageJson.version ?? '0.0.0'
-}
-
 async function main() {
-  const version = await readPackageVersion()
+  const version = process.env.RELAY_CLI_VERSION ?? '0.0.0'
   const program = createRootCommand(version)
   program.exitOverride()
 
@@ -45,4 +31,8 @@ async function main() {
   }
 }
 
-await main()
+main().catch((error: unknown) => {
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
+  process.stderr.write(`${message}\n`)
+  process.exit(1)
+})

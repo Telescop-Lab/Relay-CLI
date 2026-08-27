@@ -1,5 +1,3 @@
-import { fetch, Headers, type RequestInit } from 'undici'
-
 import { DEVICE_BINDING_COOKIE_NAME, DEFAULT_HTTP_TIMEOUT_MS, RELAY_USER_AGENT } from '../lib/constants.js'
 import { createHttpError, type CliError } from '../lib/errors.js'
 import type { RelayApiErrorBody } from './types.js'
@@ -105,7 +103,7 @@ export class RelayHttpClient {
       headers.set('Cookie', `${DEVICE_BINDING_COOKIE_NAME}=${encodeURIComponent(options.bindingCookie)}`)
     }
 
-    let body: RequestInit['body']
+    let body: string | undefined
     if (options.body !== undefined) {
       headers.set('Content-Type', 'application/json')
       body = JSON.stringify(options.body)

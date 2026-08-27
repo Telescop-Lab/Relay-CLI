@@ -7,12 +7,17 @@ import type { CliError } from './errors.js'
 type OutputOptions = {
   json: boolean
   debug: boolean
+  color: boolean
 }
 
 type TableValue = string | number | boolean | null | undefined
 
 export class CliOutput {
-  constructor(private readonly options: OutputOptions) {}
+  constructor(private readonly options: OutputOptions) {
+    if (!options.color) {
+      chalk.level = 0
+    }
+  }
 
   writeLine(text = '') {
     process.stdout.write(`${text}\n`)
@@ -88,7 +93,7 @@ export class CliOutput {
 
     const payload = this.options.json
       ? JSON.stringify({ debug: label, value }, jsonReplacer, 2)
-      : `${chalk.dim(label)} ${inspect(value, { depth: 6, colors: process.stderr.isTTY })}`
+      : `${chalk.dim(label)} ${inspect(value, { depth: 6, colors: this.options.color && process.stderr.isTTY })}`
 
     process.stderr.write(`${payload}\n`)
   }
@@ -125,10 +130,10 @@ export class CliOutput {
       process.stderr.write(`${chalk.yellow('Hint:')} ${error.hint}\n`)
     }
     if (options.debug && error.details !== undefined) {
-      process.stderr.write(`${inspect(error.details, { depth: 8, colors: process.stderr.isTTY })}\n`)
+      process.stderr.write(`${inspect(error.details, { depth: 8, colors: this.options.color && process.stderr.isTTY })}\n`)
     }
     if (options.debug && error.cause instanceof Error) {
-      process.stderr.write(`${inspect(error.cause, { depth: 8, colors: process.stderr.isTTY })}\n`)
+      process.stderr.write(`${inspect(error.cause, { depth: 8, colors: this.options.color && process.stderr.isTTY })}\n`)
     }
   }
 }

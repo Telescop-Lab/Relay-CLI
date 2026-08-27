@@ -11,6 +11,7 @@ export type GlobalOptions = {
   json: boolean
   debug: boolean
   version: boolean
+  color: boolean
 }
 
 export type CliRuntime = {
@@ -27,11 +28,13 @@ export async function createRuntime(options: Partial<GlobalOptions>) {
     json: Boolean(options.json),
     debug: Boolean(options.debug),
     version: Boolean(options.version),
+    color: options.color !== false,
   }
 
   const output = new CliOutput({
     json: resolvedOptions.json,
     debug: resolvedOptions.debug,
+    color: resolvedOptions.color,
   })
 
   return {
@@ -44,7 +47,7 @@ export async function createRuntime(options: Partial<GlobalOptions>) {
       ora({
         text,
         stream: process.stderr,
-        isEnabled: !resolvedOptions.json && process.stderr.isTTY,
+        isEnabled: !resolvedOptions.json && resolvedOptions.color && process.stderr.isTTY,
       }),
   } satisfies CliRuntime
 }
@@ -65,6 +68,7 @@ export function readGlobalOptionsFromArgv(argv: string[]) {
     json: argv.includes('--json'),
     debug: argv.includes('--debug'),
     version: argv.includes('--version') || argv.includes('-V'),
+    color: !argv.includes('--no-color'),
   }
 }
 
@@ -74,5 +78,6 @@ function resolveGlobalOptions(command: Command): Partial<GlobalOptions> {
     json: Boolean(options.json),
     debug: Boolean(options.debug),
     version: Boolean(options.version),
+    color: options.color !== false,
   }
 }

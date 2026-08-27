@@ -1,10 +1,10 @@
 import { createReadStream, createWriteStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 import { Command } from 'commander'
-import { request } from 'undici'
 
 import { createBundleUploadPlan } from '../lib/bundle-plan.js'
 import {
@@ -621,26 +621,32 @@ async function uploadFileToUrl(
   }
 
   const target = resolveTransferTarget(rawUrl, options.serviceUrl)
+  const fileStats = await fs.stat(options.filePath)
   const headers: Record<string, string> = {
     'Content-Type': options.mimeType,
+    // R2/S3 presigned PUT uploads reject chunked bodies (411 MissingContentLength).
+    // Native fetch streams a ReadStream via chunked transfer unless we declare
+    // the length explicitly, so stat the file and set Content-Length ourselves.
+    'Content-Length': String(fileStats.size),
   }
 
   if (target.requiresAuth) {
     headers.Authorization = `Bearer ${options.accessToken}`
   }
 
-  const response = await request(target.url, {
+  const response = await fetch(target.url, {
     method: 'PUT',
     headers,
     body: createReadStream(options.filePath),
+    duplex: 'half',
   })
 
-  if (response.statusCode >= 400) {
-    const message = await response.body.text()
-    throw new CliError(`Upload failed with HTTP ${response.statusCode}: ${message || target.url}`)
+  if (!response.ok) {
+    const message = await response.text()
+    throw new CliError(`Upload failed with HTTP ${response.status}: ${message || target.url}`)
   }
 
-  await response.body.text().catch(() => '')
+  await response.text().catch(() => '')
 }
 
 async function downloadFileToPath(
@@ -654,20 +660,26 @@ async function downloadFileToPath(
     headers.Authorization = `Bearer ${options.accessToken}`
   }
 
-  const response = await request(target.url, {
+  const response = await fetch(target.url, {
     method: 'GET',
     headers,
   })
 
-  if (response.statusCode >= 400) {
-    const message = await response.body.text()
-    throw new CliError(`Download failed with HTTP ${response.statusCode}: ${message || target.url}`)
+  if (!response.ok) {
+    const message = await response.text()
+    throw new CliError(`Download failed with HTTP ${response.status}: ${message || target.url}`)
   }
 
   await fs.mkdir(path.dirname(options.outputPath), { recursive: true })
 
   try {
-    await pipeline(response.body, createWriteStream(options.outputPath))
+    if (!response.body) {
+      throw new CliError('Download response body was empty')
+    }
+    await pipeline(
+      Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream),
+      createWriteStream(options.outputPath),
+    )
   } catch (error) {
     await fs.unlink(options.outputPath).catch(() => undefined)
     throw error

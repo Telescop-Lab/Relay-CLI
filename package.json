@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "bin": {
-    "relay": "dist/index.js"
+    "relay": "dist/index.cjs"
   },
   "engines": {
     "node": "20.x"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "chalk": "^5.4.1",
@@ -18,11 +19,11 @@
     "conf": "^14.0.0",
     "fast-glob": "^3.3.3",
     "ora": "^8.2.0",
-    "relay": "file:..",
-    "undici": "^6.21.3"
+    "relay": "file:.."
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.2"
   }
 }

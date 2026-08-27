@@ -14,11 +14,13 @@ import { createFolderCommand } from './folders.js'
 import { createHistoryCommand } from './history.js'
 import { createStorageCommand } from './storage.js'
 import { createWorkspaceCommand } from './workspaces.js'
+import { createToolsCommand } from './tools.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 
 type RootOptions = {
   json?: boolean
   debug?: boolean
+  color?: boolean
   version?: boolean
 }
 
@@ -32,6 +34,7 @@ export function createRootCommand(version: string) {
     .helpOption('-h, --help', 'Display help information')
     .option('--json', 'Write structured results to stdout')
     .option('--debug', 'Print debug diagnostics to stderr')
+    .option('--no-color', 'Disable ANSI color and style codes in output')
     .option('-V, --version', 'Display CLI version')
     .showSuggestionAfterError()
     .showHelpAfterError('(run with --help for usage)')
@@ -53,6 +56,7 @@ export function createRootCommand(version: string) {
     .addCommand(createHistoryCommand())
     .addCommand(createStorageCommand())
     .addCommand(createExportCommand())
+    .addCommand(createToolsCommand(program, version))
 
   program.action(async (_options, command: Command) => {
     const runtime = await getCommandRuntime(command)
@@ -83,6 +87,7 @@ export function createRootCommand(version: string) {
       '  bundle inbox/list/show/pull/push/delete',
       '  history',
       '  storage stats',
+      '  tools schema',
       '  export',
     ].join('\n'),
   )
