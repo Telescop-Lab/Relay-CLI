@@ -15,6 +15,7 @@ import type {
   RelayApiWorkspaceMessage,
   RelayApiWorkspaceMessageResponse,
   RelayApiWorkspaceResponse,
+  RelayApiWorkspaceUpdateResponse,
 } from '../transport/types.js'
 
 type WorkspaceListOptions = {
@@ -39,6 +40,11 @@ type WorkspaceMessageSetOptions = WorkspaceMessageOptions & {
   file?: string
   stdin?: boolean
   force?: boolean
+}
+
+type WorkspaceRenameOptions = {
+  name?: string
+  desc?: string
 }
 
 export function createWorkspaceCommand() {
@@ -318,6 +324,48 @@ export function createWorkspaceCommand() {
 
         throw error
       }
+    })
+
+  ws
+    .command('rename <workspace-id-or-name>')
+    .alias('edit')
+    .description('Rename a workspace or update its description')
+    .option('--name <new-name>', 'New workspace name')
+    .option('--desc <text>', 'New workspace description')
+    .action(async (workspaceReference: string, options: WorkspaceRenameOptions, command: Command) => {
+      if (options.name === undefined && options.desc === undefined) {
+        throw new CliError('Provide --name, --desc, or both')
+      }
+
+      const runtime = await getCommandRuntime(command)
+      const { client, accessToken } = await requireAuthenticatedService(runtime)
+      const workspace = await resolveWorkspaceReference({
+        explicitReference: workspaceReference,
+        config: runtime.config,
+        client,
+        accessToken,
+      })
+
+      const response = await client.requestJson<RelayApiWorkspaceUpdateResponse>({
+        method: 'PATCH',
+        path: `/api/workspaces/${workspace.id}`,
+        accessToken,
+        body: {
+          ...(options.name !== undefined ? { name: options.name } : {}),
+          ...(options.desc !== undefined ? { description: options.desc } : {}),
+        },
+      })
+
+      if (runtime.options.json) {
+        runtime.output.writeJson(response.data)
+        return
+      }
+
+      const updated = response.data.workspace
+      const changed: string[] = []
+      if (options.name !== undefined) changed.push(`name → ${updated.name}`)
+      if (options.desc !== undefined) changed.push(`description → ${updated.description ?? ''}`)
+      runtime.output.writeLine(`Updated workspace ${updated.name} (${updated.id}): ${changed.join('; ')}`)
     })
 
   return ws

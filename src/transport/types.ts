@@ -26,6 +26,18 @@ export interface RelayApiWorkspaceResponse {
   workspace: WorkspaceRecord
 }
 
+export interface RelayApiWorkspaceUpdateResponse {
+  workspace: {
+    id: string
+    name: string
+    slug: string
+    description: string | null
+    usedBytes: number
+    deviceCount: number
+    bundleCount: number
+  }
+}
+
 export interface RelayApiBundleFile {
   id: string
   name: string
@@ -66,6 +78,16 @@ export interface RelayApiBundleResponse {
   bundle: RelayApiBundle
 }
 
+export interface RelayApiBundleUpdateResponse {
+  bundle: {
+    id: string
+    bundleId?: string
+    bundle_id?: string
+    note: string | null
+    folderId: string | null
+  }
+}
+
 export interface RelayApiBundleDownloadFile {
   id: string
   name: string
@@ -104,6 +126,21 @@ export type RelayApiLoginResponse =
 
 export interface RelayApiDevicesResponse {
   devices: RelayApiDevice[]
+}
+
+export interface RelayApiDeviceCreateResponse {
+  token: string
+  device: RelayApiDevice
+}
+
+export interface RelayApiDeviceUpdateResponse {
+  device: RelayApiDevice
+  isCurrent: boolean
+}
+
+export interface RelayApiDeviceRevokeResponse {
+  success: boolean
+  revokedCurrentDevice: boolean
 }
 
 export interface RelayApiWorkspaceMessage {
@@ -167,6 +204,14 @@ export interface RelayApiFolderCreateResponse {
   folder: RelayApiFolderNode
 }
 
+export interface RelayApiFolderUpdateResponse {
+  folder: {
+    id: string
+    name: string
+    parentId: string | null
+  }
+}
+
 export interface RelayApiSuccessResponse {
   success: boolean
 }
@@ -180,4 +225,17 @@ export interface RelayApiErrorBody {
   message?: string
   code?: string
   [key: string]: unknown
+}
+
+export interface RelayApiMultipartInitResponse {
+  uploadId: string
+  partSize: number
+}
+
+export interface RelayApiMultipartPartsResponse {
+  parts: Array<{ partNumber: number; url: string }>
+}
+
+export interface RelayApiMultipartCompleteResponse {
+  success: boolean
 }

@@ -277,7 +277,7 @@ async function resolvePassword(options: { passwordStdin: boolean; confirm: boole
     return trimSingleTrailingNewline(await readStdin())
   }
 
-  return readPassword('Password', options.confirm)
+  return readPassword('Enter your password', options.confirm)
 }
 
 async function resolveDeviceName(explicitDevice: string | undefined, recentDeviceNames: string[]) {

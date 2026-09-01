@@ -22,12 +22,21 @@ import { confirm } from '../lib/prompts.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 import { requireAuthenticatedService } from '../lib/service-context.js'
 import { resolveWorkspaceReference } from '../lib/workspace-resolver.js'
+import {
+  MULTIPART_THRESHOLD_BYTES,
+  isRetryableUploadError,
+  uploadMultipartFile,
+} from '../lib/multipart.js'
+import { mapWithConcurrency, resolveFileConcurrency } from '../lib/concurrency.js'
+import type { PlannedBundleFile } from '../lib/bundle-plan.js'
+import type { RelayHttpClient } from '../transport/http-client.js'
 import type {
   RelayApiBundle,
   RelayApiBundleDownloadUrlsResponse,
   RelayApiBundleFile,
   RelayApiBundleResponse,
   RelayApiBundlesResponse,
+  RelayApiBundleUpdateResponse,
   RelayApiSuccessResponse,
 } from '../transport/types.js'
 
@@ -57,6 +66,11 @@ type BundlePushOptions = BundleWorkspaceOptions & {
 
 type BundleDeleteOptions = BundleWorkspaceOptions & {
   yes?: boolean
+}
+
+type BundleEditOptions = BundleWorkspaceOptions & {
+  note?: string
+  folder?: string
 }
 
 type BundleFileCreateResponse = {
@@ -318,6 +332,12 @@ export function createBundleCommand() {
         throw new CliError('Use either --folder or --add-folder, not both')
       }
 
+      if (options.note.trim().length === 0) {
+        throw new CliError('Bundle note cannot be empty', {
+          hint: 'Provide a non-empty --note, like a git commit message.',
+        })
+      }
+
       const runtime = await getCommandRuntime(command)
       const { client, accessToken, serviceUrl } = await requireAuthenticatedService(runtime)
       const workspace = await resolveWorkspaceReference({
@@ -384,27 +404,16 @@ export function createBundleCommand() {
       })
       const createdBundleId = createBundleResponse.data.bundle.id
 
-      for (const file of uploadPlan.files) {
-        const registerResponse = await client.requestJson<BundleFileCreateResponse>({
-          method: 'POST',
-          path: `/api/bundles/${createdBundleId}/files`,
+      const uploadedFiles = await mapWithConcurrency(uploadPlan.files, resolveFileConcurrency(), (file) =>
+        pushBundleFile({
+          client,
           accessToken,
-          query: { workspaceId: workspace.id },
-          body: {
-            name: file.name,
-            relativePath: file.relativePath,
-            sizeBytes: file.sizeBytes,
-            mimeType: file.mimeType,
-          },
-        })
-
-        await uploadFileToUrl(registerResponse.data.file.uploadUrl ?? '', {
           serviceUrl,
-          accessToken,
-          filePath: file.absolutePath,
-          mimeType: file.mimeType,
-        })
-      }
+          workspaceId: workspace.id,
+          bundleId: createdBundleId,
+          file,
+        }),
+      )
 
       await client.requestJson<RelayApiBundleResponse>({
         method: 'POST',
@@ -425,6 +434,7 @@ export function createBundleCommand() {
           bundle: bundleRecord,
           uploadedFiles: uploadPlan.files.length,
           totalBytes: uploadPlan.totalBytes,
+          files: uploadedFiles,
         })
         return
       }
@@ -484,6 +494,95 @@ export function createBundleCommand() {
     })
 
   deleteCommand.alias('remove')
+
+  bundle
+    .command('restore <bundle-id>')
+    .description('Restore a bundle from trash')
+    .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
+    .action(async (bundleId: string, options: BundleWorkspaceOptions, command: Command) => {
+      const runtime = await getCommandRuntime(command)
+      const { client, accessToken } = await requireAuthenticatedService(runtime)
+      const workspace = await resolveWorkspaceReference({
+        explicitReference: options.workspace,
+        config: runtime.config,
+        client,
+        accessToken,
+      })
+
+      const response = await client.requestJson<RelayApiBundleResponse>({
+        method: 'POST',
+        path: `/api/bundles/${bundleId}/restore`,
+        accessToken,
+        query: { workspaceId: workspace.id },
+      })
+      const bundle = response.data.bundle
+
+      if (runtime.options.json) {
+        runtime.output.writeJson({ bundle })
+        return
+      }
+
+      runtime.output.writeLine(`Restored bundle ${bundle.id} (${bundle.filesCount} file(s))`)
+    })
+
+  bundle
+    .command('edit <bundle-id>')
+    .description('Update a bundle note or move it to another folder')
+    .option('--note <text>', 'New note text for the bundle')
+    .option('--folder <path>', 'Move the bundle to an existing folder path (use / for root)')
+    .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
+    .action(async (bundleId: string, options: BundleEditOptions, command: Command) => {
+      if (options.note === undefined && options.folder === undefined) {
+        throw new CliError('Provide --note, --folder, or both')
+      }
+
+      if (options.note !== undefined && options.note.trim().length === 0) {
+        throw new CliError('Bundle note cannot be empty', {
+          hint: 'Provide a non-empty --note, like a git commit message.',
+        })
+      }
+
+      const runtime = await getCommandRuntime(command)
+      const { client, accessToken } = await requireAuthenticatedService(runtime)
+      const workspace = await resolveWorkspaceReference({
+        explicitReference: options.workspace,
+        config: runtime.config,
+        client,
+        accessToken,
+      })
+
+      let folderId: string | null | undefined
+      if (options.folder !== undefined) {
+        const folderContext = await resolveFolderPath({
+          client,
+          accessToken,
+          workspaceId: workspace.id,
+          folderPath: options.folder,
+        })
+        folderId = folderContext.folderId
+      }
+
+      const response = await client.requestJson<RelayApiBundleUpdateResponse>({
+        method: 'PATCH',
+        path: `/api/bundles/${bundleId}`,
+        accessToken,
+        query: { workspaceId: workspace.id },
+        body: {
+          ...(options.note !== undefined ? { note: options.note } : {}),
+          ...(folderId !== undefined ? { folderId } : {}),
+        },
+      })
+
+      if (runtime.options.json) {
+        runtime.output.writeJson(response.data)
+        return
+      }
+
+      const changed: string[] = []
+      if (options.note !== undefined) changed.push('note updated')
+      if (options.folder !== undefined) changed.push('folder updated')
+      runtime.output.writeLine(`Updated bundle ${bundleId} (${changed.join(', ')})`)
+    })
 
   return bundle
 }
@@ -612,18 +711,145 @@ function resolveBundleOutputPath(outputDir: string, relativePath: string) {
   return candidate
 }
 
-async function uploadFileToUrl(
-  rawUrl: string,
-  options: { serviceUrl: string; accessToken: string; filePath: string; mimeType: string },
-) {
-  if (!rawUrl) {
+const MAX_FILE_UPLOAD_RETRIES = 3
+const FILE_RETRY_BASE_DELAY_MS = 500
+
+type UploadMode = 'single' | 'multipart'
+
+type UploadResult = {
+  name: string
+  relativePath: string | null
+  sizeBytes: number
+  uploadMode: UploadMode
+}
+
+async function pushBundleFile(options: {
+  client: RelayHttpClient
+  accessToken: string
+  serviceUrl: string
+  workspaceId: string
+  bundleId: string
+  file: PlannedBundleFile
+}): Promise<UploadResult> {
+  const { client, accessToken, serviceUrl, workspaceId, bundleId, file } = options
+
+  // Register the file exactly once. This creates a BundleFile record server-side,
+  // so it must not be retried — a retry after a lost response would create a
+  // duplicate record that fails finalize's headObject check.
+  const registerResponse = await client.requestJson<BundleFileCreateResponse>({
+    method: 'POST',
+    path: `/api/bundles/${bundleId}/files`,
+    accessToken,
+    query: { workspaceId },
+    body: {
+      name: file.name,
+      relativePath: file.relativePath,
+      sizeBytes: file.sizeBytes,
+      mimeType: file.mimeType,
+    },
+  })
+
+  const uploadMode = await uploadFileWithRetry({
+    client,
+    accessToken,
+    serviceUrl,
+    workspaceId,
+    bundleId,
+    fileId: registerResponse.data.file.id,
+    uploadUrl: registerResponse.data.file.uploadUrl ?? '',
+    filePath: file.absolutePath,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+  })
+
+  return {
+    name: file.name,
+    relativePath: file.relativePath,
+    sizeBytes: file.sizeBytes,
+    uploadMode,
+  }
+}
+
+async function uploadFileWithRetry(options: {
+  client: RelayHttpClient
+  accessToken: string
+  serviceUrl: string
+  workspaceId: string
+  bundleId: string
+  fileId: string
+  uploadUrl: string
+  filePath: string
+  mimeType: string
+  sizeBytes: number
+}): Promise<UploadMode> {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= MAX_FILE_UPLOAD_RETRIES; attempt += 1) {
+    try {
+      return await uploadFileToUrl(options)
+    } catch (error) {
+      lastError = error
+      if (attempt >= MAX_FILE_UPLOAD_RETRIES || !isRetryableUploadError(error)) {
+        throw error
+      }
+      await sleep(FILE_RETRY_BASE_DELAY_MS * 2 ** attempt)
+    }
+  }
+
+  throw lastError
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function uploadFileToUrl(options: {
+  client: RelayHttpClient
+  accessToken: string
+  serviceUrl: string
+  workspaceId: string
+  bundleId: string
+  fileId: string
+  uploadUrl: string
+  filePath: string
+  mimeType: string
+  sizeBytes: number
+}): Promise<UploadMode> {
+  if (!options.uploadUrl) {
     throw new CliError('Bundle upload URL was missing from the service response')
   }
 
-  const target = resolveTransferTarget(rawUrl, options.serviceUrl)
-  const fileStats = await fs.stat(options.filePath)
+  const target = resolveTransferTarget(options.uploadUrl, options.serviceUrl)
+
+  // Local/dev fallback (relative, authenticated) always uses a single PUT.
+  // Multipart only applies to direct R2 presigned uploads and larger files.
+  if (target.requiresAuth || options.sizeBytes < MULTIPART_THRESHOLD_BYTES) {
+    await singlePutFile(options.filePath, options.mimeType, target, options.accessToken)
+    return 'single'
+  }
+
+  await uploadMultipartFile({
+    client: options.client,
+    accessToken: options.accessToken,
+    workspaceId: options.workspaceId,
+    bundleId: options.bundleId,
+    fileId: options.fileId,
+    filePath: options.filePath,
+    mimeType: options.mimeType,
+    sizeBytes: options.sizeBytes,
+  })
+  return 'multipart'
+}
+
+async function singlePutFile(
+  filePath: string,
+  mimeType: string,
+  target: { url: string; requiresAuth: boolean },
+  accessToken: string,
+) {
+  const fileStats = await fs.stat(filePath)
   const headers: Record<string, string> = {
-    'Content-Type': options.mimeType,
+    'Content-Type': mimeType,
     // R2/S3 presigned PUT uploads reject chunked bodies (411 MissingContentLength).
     // Native fetch streams a ReadStream via chunked transfer unless we declare
     // the length explicitly, so stat the file and set Content-Length ourselves.
@@ -631,19 +857,21 @@ async function uploadFileToUrl(
   }
 
   if (target.requiresAuth) {
-    headers.Authorization = `Bearer ${options.accessToken}`
+    headers.Authorization = `Bearer ${accessToken}`
   }
 
   const response = await fetch(target.url, {
     method: 'PUT',
     headers,
-    body: createReadStream(options.filePath),
+    body: createReadStream(filePath),
     duplex: 'half',
   })
 
   if (!response.ok) {
     const message = await response.text()
-    throw new CliError(`Upload failed with HTTP ${response.status}: ${message || target.url}`)
+    throw new CliError(`Upload failed with HTTP ${response.status}: ${message || target.url}`, {
+      status: response.status,
+    })
   }
 
   await response.text().catch(() => '')

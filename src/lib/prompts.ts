@@ -37,7 +37,7 @@ export async function readPassword(message: string, confirmPassword = false) {
     return first
   }
 
-  const second = await promptHidden('Confirm password')
+  const second = await promptHidden('Confirm your password')
   if (first !== second) {
     throw new CliError('Password confirmation did not match')
   }
@@ -76,7 +76,8 @@ async function promptHidden(message: string) {
 
   try {
     maskedOutput.muted = true
-    const answer = await rl.question(`${message}: `)
+    process.stderr.write(`${message}: `)
+    const answer = await rl.question('')
     process.stderr.write('\n')
     return answer
   } finally {

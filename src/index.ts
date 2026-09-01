@@ -2,8 +2,6 @@
 
 import { createRootCommand } from './commands/root.js'
 import {
-  commanderErrorToCliError,
-  isCommanderError,
   isCommanderHelpDisplay,
   toCliError,
 } from './lib/errors.js'
@@ -22,9 +20,9 @@ async function main() {
     }
 
     const runtime = await createRuntime(readGlobalOptionsFromArgv(process.argv.slice(2)))
-    const cliError = isCommanderError(error)
-      ? commanderErrorToCliError(error)
-      : toCliError(error)
+    // toCliError preserves CliError instances verbatim (including hint/details),
+    // then falls back to CommanderError translation only for real Commander errors.
+    const cliError = toCliError(error)
 
     runtime.output.renderError(cliError, { debug: runtime.options.debug })
     process.exit(cliError.exitCode)
