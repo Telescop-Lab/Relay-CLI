@@ -108,9 +108,16 @@ async function planFromPath(inputPath: string, cwd: string) {
     followSymbolicLinks: false,
   })
 
+  // Preserve the directory's own name so that uploading `tests` produces
+  // relative paths like `tests/web/a.md` (instead of `web/a.md`), letting the
+  // receiving device reconstruct the folder as a folder.
+  const directoryName = path.basename(resolvedPath)
+
   return Promise.all(
     files.sort((left, right) => left.localeCompare(right)).map(async (filePath) => {
-      const relativePath = normalizeRelativePath(path.relative(resolvedPath, filePath))
+      const relativePath = normalizeRelativePath(
+        path.join(directoryName, path.relative(resolvedPath, filePath)),
+      )
       return createPlannedFile(filePath, relativePath)
     }),
   )

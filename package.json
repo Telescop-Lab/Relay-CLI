@@ -9,17 +9,22 @@
   "engines": {
     "node": "20.x"
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@napi-rs/keyring": "^2.0.0",
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "conf": "^14.0.0",
     "fast-glob": "^3.3.3",
-    "ora": "^8.2.0",
-    "relay": "file:.."
+    "ora": "^8.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

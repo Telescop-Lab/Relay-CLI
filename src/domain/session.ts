@@ -1,4 +1,5 @@
 export interface SessionSummary {
+  profile: string
   serviceUrl: string
   updatedAt: string
   userId: string | null
@@ -18,21 +19,23 @@ export interface StoredBindingRecord {
 }
 
 export interface StoredServiceCredentials {
+  serviceUrl: string
   accessToken?: string | null
   refreshToken?: string | null
   bindings: StoredBindingRecord[]
 }
 
 export interface RelayCredentialState {
-  version: 1
-  currentServiceUrl: string | null
-  services: Record<string, StoredServiceCredentials>
+  version: 2
+  currentProfile: string | null
+  profiles: Record<string, StoredServiceCredentials>
   summaries: Record<string, SessionSummary>
 }
 
 export interface CredentialSnapshot {
   backend: 'keychain' | 'state-file'
-  currentServiceUrl: string | null
+  profile: string
+  serviceUrl: string | null
   hasAccessToken: boolean
   bindingCount: number
   summary: SessionSummary | null

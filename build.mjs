@@ -24,7 +24,7 @@ await build({
   },
   // Optional native keychain integration is loaded lazily at runtime (try/catch);
   // keep it external so the single-file bundle never hard-requires a native addon.
-  external: ['keytar'],
+  external: ['@napi-rs/keyring'],
   minify: true,
   sourcemap: false,
   logLevel: 'info',

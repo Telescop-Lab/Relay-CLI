@@ -22,6 +22,7 @@ type RootOptions = {
   debug?: boolean
   color?: boolean
   version?: boolean
+  profile?: string
 }
 
 export function createRootCommand(version: string) {
@@ -35,6 +36,7 @@ export function createRootCommand(version: string) {
     .option('--json', 'Write structured results to stdout')
     .option('--debug', 'Print debug diagnostics to stderr')
     .option('--no-color', 'Disable ANSI color and style codes in output')
+    .option('--profile <name>', 'Use the named Relay profile (default: active profile)')
     .option('-V, --version', 'Display CLI version')
     .showSuggestionAfterError()
     .showHelpAfterError('(run with --help for usage)')
@@ -76,6 +78,7 @@ export function createRootCommand(version: string) {
       '',
       'Implemented now:',
       '  config set url',
+      '  config profile list/use/remove',
       '  signup',
       '  login',
       '  logout',

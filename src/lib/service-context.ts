@@ -3,7 +3,9 @@ import { CliError } from './errors.js'
 import { ExitCode } from './exit-codes.js'
 import { RelayHttpClient } from '../transport/http-client.js'
 
-export function createServiceClient(runtime: CliRuntime, serviceUrl = runtime.config.requireServiceUrl()) {
+const refreshPromises = new Map<string, Promise<string>>()
+
+export function createServiceClient(runtime: CliRuntime, serviceUrl = runtime.config.requireServiceUrl(runtime.profile)) {
   return {
     serviceUrl,
     client: new RelayHttpClient(serviceUrl, {
@@ -14,7 +16,25 @@ export function createServiceClient(runtime: CliRuntime, serviceUrl = runtime.co
 }
 
 async function refreshAccessToken(runtime: CliRuntime, serviceUrl: string): Promise<string> {
-  const refreshToken = await runtime.credentials.getRefreshToken(serviceUrl)
+  const profile = runtime.profile
+  const inflight = refreshPromises.get(profile)
+  if (inflight) {
+    return inflight
+  }
+
+  const refresh = rotateTokens(runtime, serviceUrl)
+  refreshPromises.set(profile, refresh)
+
+  try {
+    return await refresh
+  } finally {
+    refreshPromises.delete(profile)
+  }
+}
+
+async function rotateTokens(runtime: CliRuntime, serviceUrl: string): Promise<string> {
+  const profile = runtime.profile
+  const refreshToken = await runtime.credentials.getRefreshToken(profile)
   if (!refreshToken) {
     throw new CliError('Session expired — please log in again', {
       code: 'AUTH_REQUIRED',
@@ -30,8 +50,8 @@ async function refreshAccessToken(runtime: CliRuntime, serviceUrl: string): Prom
 
   if (!res.ok) {
     // Refresh token is also expired or revoked
-    await runtime.credentials.setAccessToken(serviceUrl, null)
-    await runtime.credentials.setRefreshToken(serviceUrl, null)
+    await runtime.credentials.setAccessToken(profile, null)
+    await runtime.credentials.setRefreshToken(profile, null)
     throw new CliError('Session expired — please log in again', {
       code: 'AUTH_REQUIRED',
       exitCode: ExitCode.AuthFailure,
@@ -46,9 +66,9 @@ async function refreshAccessToken(runtime: CliRuntime, serviceUrl: string): Prom
     })
   }
 
-  await runtime.credentials.setAccessToken(serviceUrl, data.token)
+  await runtime.credentials.setAccessToken(profile, data.token)
   if (data.refreshToken) {
-    await runtime.credentials.setRefreshToken(serviceUrl, data.refreshToken)
+    await runtime.credentials.setRefreshToken(profile, data.refreshToken)
   }
 
   return data.token
@@ -56,7 +76,7 @@ async function refreshAccessToken(runtime: CliRuntime, serviceUrl: string): Prom
 
 export async function requireAuthenticatedService(runtime: CliRuntime) {
   const { serviceUrl, client } = createServiceClient(runtime)
-  const accessToken = await runtime.credentials.getAccessToken(serviceUrl)
+  const accessToken = await runtime.credentials.getAccessToken(runtime.profile)
 
   if (!accessToken) {
     throw new CliError('No active Relay session for the configured service', {

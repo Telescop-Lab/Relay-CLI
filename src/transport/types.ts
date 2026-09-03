@@ -130,6 +130,7 @@ export interface RelayApiDevicesResponse {
 
 export interface RelayApiDeviceCreateResponse {
   token: string
+  refreshToken?: string
   device: RelayApiDevice
 }
 

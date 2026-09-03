@@ -13,18 +13,22 @@ type PersistAuthenticatedSessionOptions = SessionIdentity & {
   accessToken: string
   refreshToken?: string | null
   bindingSecret?: string | null
+  profile?: string
 }
 
 export async function persistAuthenticatedSession(options: PersistAuthenticatedSessionOptions) {
-  await options.runtime.credentials.setAccessToken(options.serviceUrl, options.accessToken)
+  const profile = options.profile ?? options.runtime.profile
+
+  await options.runtime.credentials.setServiceUrl(profile, options.serviceUrl)
+  await options.runtime.credentials.setAccessToken(profile, options.accessToken)
 
   if (options.refreshToken) {
-    await options.runtime.credentials.setRefreshToken(options.serviceUrl, options.refreshToken)
+    await options.runtime.credentials.setRefreshToken(profile, options.refreshToken)
   }
 
   if (options.bindingSecret) {
     await options.runtime.credentials.setDeviceBinding({
-      serviceUrl: options.serviceUrl,
+      profile,
       userId: options.user.id,
       deviceId: options.device.id,
       deviceName: options.device.name,
@@ -37,6 +41,7 @@ export async function persistAuthenticatedSession(options: PersistAuthenticatedS
     serviceUrl: options.serviceUrl,
     user: options.user,
     device: options.device,
+    profile,
   })
 
   return summary
@@ -47,14 +52,17 @@ export async function refreshSessionSummary(options: {
   serviceUrl: string
   user: RelayApiUser
   device: RelayApiDevice
+  profile?: string
 }) {
+  const profile = options.profile ?? options.runtime.profile
   const binding = await options.runtime.credentials.getDeviceBinding({
-    serviceUrl: options.serviceUrl,
+    profile,
     userId: options.user.id,
     deviceId: options.device.id,
   })
 
   const summary = createSessionSummary({
+    profile,
     serviceUrl: options.serviceUrl,
     user: options.user,
     device: options.device,
@@ -65,8 +73,11 @@ export async function refreshSessionSummary(options: {
   return summary
 }
 
-export function createSessionSummary(options: SessionIdentity & { hasBinding: boolean }): SessionSummary {
+export function createSessionSummary(
+  options: SessionIdentity & { profile: string; hasBinding: boolean },
+): SessionSummary {
   return {
+    profile: options.profile,
     serviceUrl: options.serviceUrl,
     updatedAt: new Date().toISOString(),
     userId: options.user.id,
@@ -79,6 +90,7 @@ export function createSessionSummary(options: SessionIdentity & { hasBinding: bo
 }
 
 export function sessionPayload(options: {
+  profile: string
   serviceUrl: string
   user: RelayApiUser
   device: RelayApiDevice
@@ -86,6 +98,7 @@ export function sessionPayload(options: {
   hasDeviceBinding: boolean
 }) {
   return {
+    profile: options.profile,
     serviceUrl: options.serviceUrl,
     user: options.user,
     device: options.device,

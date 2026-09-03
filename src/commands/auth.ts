@@ -4,7 +4,8 @@ import { persistAuthenticatedSession, refreshSessionSummary, sessionPayload } fr
 import { CliError } from '../lib/errors.js'
 import { readPassword, readStdin, promptText } from '../lib/prompts.js'
 import { createServiceClient, requireAuthenticatedService } from '../lib/service-context.js'
-import { getCommandRuntime } from '../lib/runtime.js'
+import { getCommandRuntime, type CliRuntime } from '../lib/runtime.js'
+import { normalizeProfileName } from '../lib/config-store.js'
 import type { ResponseEnvelope } from '../transport/http-client.js'
 import type {
   RelayApiAuthMeResponse,
@@ -55,6 +56,8 @@ export function createSignupCommand() {
           deviceName: options.device,
         },
       })
+      const profile = resolveTargetProfile(runtime, response.data.user.username)
+      activateProfile(runtime, profile, serviceUrl)
       const bindingSecret = await client.extractDeviceBinding(response.headers)
       const summary = await persistAuthenticatedSession({
         runtime,
@@ -64,12 +67,14 @@ export function createSignupCommand() {
         user: response.data.user,
         device: response.data.device,
         bindingSecret,
+        profile,
       })
       const payload = sessionPayload({
+        profile,
         serviceUrl,
         user: response.data.user,
         device: response.data.device,
-        defaultWorkspace: runtime.config.getDefaultWorkspace(),
+        defaultWorkspace: runtime.config.getDefaultWorkspace(profile),
         hasDeviceBinding: summary.hasBinding,
       })
 
@@ -79,6 +84,7 @@ export function createSignupCommand() {
       }
 
       runtime.output.writeLine(`Signed up as ${response.data.user.username} on device ${response.data.device.name}`)
+      runtime.output.writeLine(`Profile: ${profile}`)
       runtime.output.writeLine(`Service URL: ${serviceUrl}`)
     })
 }
@@ -96,7 +102,7 @@ export function createLoginCommand() {
         passwordStdin: Boolean(options.passwordStdin),
         confirm: false,
       })
-      const rememberedBinding = await runtime.credentials.getDeviceBinding({ serviceUrl })
+      const rememberedBinding = await runtime.credentials.getDeviceBinding({ profile: runtime.profile })
       const initialResponse = await client.requestJson<RelayApiLoginResponse>({
         method: 'POST',
         path: '/api/auth/login',
@@ -143,10 +149,11 @@ export function createWhoAmICommand() {
         device: response.data.device,
       })
       const payload = sessionPayload({
+        profile: runtime.profile,
         serviceUrl,
         user: response.data.user,
         device: response.data.device,
-        defaultWorkspace: runtime.config.getDefaultWorkspace(),
+        defaultWorkspace: runtime.config.getDefaultWorkspace(runtime.profile),
         hasDeviceBinding: summary.hasBinding,
       })
 
@@ -155,10 +162,11 @@ export function createWhoAmICommand() {
         return
       }
 
+      runtime.output.writeLine(`Profile: ${runtime.profile}`)
       runtime.output.writeLine(`Service URL: ${serviceUrl}`)
       runtime.output.writeLine(`User: ${response.data.user.username}`)
       runtime.output.writeLine(`Device: ${response.data.device.name}`)
-      runtime.output.writeLine(`Default workspace: ${runtime.config.getDefaultWorkspace() ?? '(none)'}`)
+      runtime.output.writeLine(`Default workspace: ${runtime.config.getDefaultWorkspace(runtime.profile) ?? '(none)'}`)
       runtime.output.writeLine(`Local device binding: ${summary.hasBinding ? 'yes' : 'no'}`)
     })
 }
@@ -170,7 +178,7 @@ export function createLogoutCommand() {
     .action(async (options: LogoutOptions, command: Command) => {
       const runtime = await getCommandRuntime(command)
       const { client, serviceUrl, accessToken } = await requireAuthenticatedService(runtime)
-      const summary = runtime.credentials.getSessionSummary(serviceUrl) ?? await fetchCurrentSummary(runtime, serviceUrl, client, accessToken)
+      const summary = runtime.credentials.getSessionSummary(runtime.profile) ?? await fetchCurrentSummary(runtime, serviceUrl, client, accessToken)
 
       if (options.forgetDevice) {
         await client.requestJson<RelayApiForgetDeviceResponse>({
@@ -181,7 +189,7 @@ export function createLogoutCommand() {
 
         if (summary?.userId && summary.deviceId) {
           await runtime.credentials.clearDeviceBinding({
-            serviceUrl,
+            profile: runtime.profile,
             userId: summary.userId,
             deviceId: summary.deviceId,
           })
@@ -194,7 +202,8 @@ export function createLogoutCommand() {
         accessToken,
       })
 
-      await runtime.credentials.setAccessToken(serviceUrl, null)
+      await runtime.credentials.setAccessToken(runtime.profile, null)
+      await runtime.credentials.setRefreshToken(runtime.profile, null)
       if (summary) {
         runtime.credentials.setSessionSummary({
           ...summary,
@@ -226,6 +235,8 @@ async function finalizeLogin(
   client: ReturnType<typeof createServiceClient>['client'],
   response: ResponseEnvelope<RelayApiAuthSessionResponse>,
 ) {
+  const profile = resolveTargetProfile(runtime, response.data.user.username)
+  activateProfile(runtime, profile, serviceUrl)
   const bindingSecret = await client.extractDeviceBinding(response.headers)
   const summary = await persistAuthenticatedSession({
     runtime,
@@ -235,12 +246,14 @@ async function finalizeLogin(
     user: response.data.user,
     device: response.data.device,
     bindingSecret,
+    profile,
   })
   const payload = sessionPayload({
+    profile,
     serviceUrl,
     user: response.data.user,
     device: response.data.device,
-    defaultWorkspace: runtime.config.getDefaultWorkspace(),
+    defaultWorkspace: runtime.config.getDefaultWorkspace(profile),
     hasDeviceBinding: summary.hasBinding,
   })
 
@@ -250,7 +263,25 @@ async function finalizeLogin(
   }
 
   runtime.output.writeLine(`Logged in as ${response.data.user.username} on device ${response.data.device.name}`)
+  runtime.output.writeLine(`Profile: ${profile}`)
   runtime.output.writeLine(`Service URL: ${serviceUrl}`)
+}
+
+function resolveTargetProfile(runtime: CliRuntime, username: string) {
+  if (runtime.options.profile) {
+    return runtime.profile
+  }
+
+  return normalizeProfileName(username.toLowerCase())
+}
+
+function activateProfile(runtime: CliRuntime, profile: string, serviceUrl: string) {
+  if (runtime.options.profile) {
+    return
+  }
+
+  runtime.config.setCurrentProfile(profile)
+  runtime.config.setServiceUrl(serviceUrl, profile)
 }
 
 async function fetchCurrentSummary(

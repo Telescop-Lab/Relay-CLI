@@ -80,6 +80,7 @@ export function createDevicesCommand() {
         runtime,
         serviceUrl,
         accessToken: created.data.token,
+        refreshToken: created.data.refreshToken ?? null,
         user: me.data.user,
         device: created.data.device,
         bindingSecret,

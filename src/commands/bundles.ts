@@ -71,6 +71,7 @@ type BundleDeleteOptions = BundleWorkspaceOptions & {
 type BundleEditOptions = BundleWorkspaceOptions & {
   note?: string
   folder?: string
+  addFolder?: string
 }
 
 type BundleFileCreateResponse = {
@@ -530,10 +531,19 @@ export function createBundleCommand() {
     .description('Update a bundle note or move it to another folder')
     .option('--note <text>', 'New note text for the bundle')
     .option('--folder <path>', 'Move the bundle to an existing folder path (use / for root)')
+    .option('--add-folder <path>', 'Move the bundle to a folder path, creating missing segments')
     .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
     .action(async (bundleId: string, options: BundleEditOptions, command: Command) => {
-      if (options.note === undefined && options.folder === undefined) {
-        throw new CliError('Provide --note, --folder, or both')
+      if (options.folder && options.addFolder) {
+        throw new CliError('Use either --folder or --add-folder, not both')
+      }
+
+      if (
+        options.note === undefined &&
+        options.folder === undefined &&
+        options.addFolder === undefined
+      ) {
+        throw new CliError('Provide --note, --folder, --add-folder, or any combination')
       }
 
       if (options.note !== undefined && options.note.trim().length === 0) {
@@ -560,6 +570,14 @@ export function createBundleCommand() {
           folderPath: options.folder,
         })
         folderId = folderContext.folderId
+      } else if (options.addFolder !== undefined) {
+        const folderContext = await ensureFolderPath({
+          client,
+          accessToken,
+          workspaceId: workspace.id,
+          folderPath: options.addFolder,
+        })
+        folderId = folderContext.folderId
       }
 
       const response = await client.requestJson<RelayApiBundleUpdateResponse>({
@@ -580,7 +598,9 @@ export function createBundleCommand() {
 
       const changed: string[] = []
       if (options.note !== undefined) changed.push('note updated')
-      if (options.folder !== undefined) changed.push('folder updated')
+      if (options.folder !== undefined || options.addFolder !== undefined) {
+        changed.push('folder updated')
+      }
       runtime.output.writeLine(`Updated bundle ${bundleId} (${changed.join(', ')})`)
     })
 
