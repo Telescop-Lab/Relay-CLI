@@ -16,11 +16,3 @@ export async function sha256FileHex(filePath: string): Promise<string> {
 
   return hash.digest('hex')
 }
-
-/**
- * Convert a 64-character hex SHA-256 digest into the base64 form that S3/R2
- * accepts in the `x-amz-checksum-sha256` header / `ChecksumSHA256` parameter.
- */
-export function sha256HexToBase64(hex: string): string {
-  return Buffer.from(hex, 'hex').toString('base64')
-}

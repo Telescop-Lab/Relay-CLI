@@ -22,7 +22,7 @@ import { confirm } from '../lib/prompts.js'
 import { getCommandRuntime } from '../lib/runtime.js'
 import { requireAuthenticatedService } from '../lib/service-context.js'
 import { resolveWorkspaceReference } from '../lib/workspace-resolver.js'
-import { sha256FileHex, sha256HexToBase64 } from '../lib/sha256.js'
+import { sha256FileHex } from '../lib/sha256.js'
 import {
   MULTIPART_THRESHOLD_BYTES,
   isRetryableUploadError,
@@ -755,8 +755,9 @@ async function pushBundleFile(options: {
   const { client, accessToken, serviceUrl, workspaceId, bundleId, file } = options
 
   // Compute the file's SHA-256 once, before registration, so the record stores
-  // it (driving finalize verification and future CAS dedup) and single-PUT
-  // uploads can attach the R2-verifiable checksum header on write.
+  // it for finalize verification (local storage) and future CAS dedup. R2 does
+  // not validate flexible checksums on presigned PUTs, so we do not send a
+  // checksum header on the wire — TLS covers transport integrity.
   const checksumSha256 = await sha256FileHex(file.absolutePath)
 
   // Register the file exactly once. This creates a BundleFile record server-side,
@@ -787,7 +788,6 @@ async function pushBundleFile(options: {
     filePath: file.absolutePath,
     mimeType: file.mimeType,
     sizeBytes: file.sizeBytes,
-    checksumSha256Base64: sha256HexToBase64(checksumSha256),
   })
 
   return {
@@ -809,7 +809,6 @@ async function uploadFileWithRetry(options: {
   filePath: string
   mimeType: string
   sizeBytes: number
-  checksumSha256Base64: string
 }): Promise<UploadMode> {
   let lastError: unknown
 
@@ -843,7 +842,6 @@ async function uploadFileToUrl(options: {
   filePath: string
   mimeType: string
   sizeBytes: number
-  checksumSha256Base64: string
 }): Promise<UploadMode> {
   if (!options.uploadUrl) {
     throw new CliError('Bundle upload URL was missing from the service response')
@@ -854,13 +852,7 @@ async function uploadFileToUrl(options: {
   // Local/dev fallback (relative, authenticated) always uses a single PUT.
   // Multipart only applies to direct R2 presigned uploads and larger files.
   if (target.requiresAuth || options.sizeBytes < MULTIPART_THRESHOLD_BYTES) {
-    await singlePutFile(
-      options.filePath,
-      options.mimeType,
-      target,
-      options.accessToken,
-      options.checksumSha256Base64,
-    )
+    await singlePutFile(options.filePath, options.mimeType, target, options.accessToken)
     return 'single'
   }
 
@@ -882,7 +874,6 @@ async function singlePutFile(
   mimeType: string,
   target: { url: string; requiresAuth: boolean },
   accessToken: string,
-  checksumSha256Base64: string,
 ) {
   const fileStats = await fs.stat(filePath)
   const headers: Record<string, string> = {
@@ -891,9 +882,6 @@ async function singlePutFile(
     // Native fetch streams a ReadStream via chunked transfer unless we declare
     // the length explicitly, so stat the file and set Content-Length ourselves.
     'Content-Length': String(fileStats.size),
-    // Attach the SHA-256 so R2 verifies the object on write against the digest
-    // registered server-side (ignored by the local/authenticated fallback path).
-    'x-amz-checksum-sha256': checksumSha256Base64,
   }
 
   if (target.requiresAuth) {
