@@ -44,7 +44,6 @@ export interface RelayApiBundleFile {
   relativePath: string | null
   mimeType: string
   sizeBytes: number
-  storageKey?: string
   uploadedAt: string
   uploadUrl?: string
   downloadUrl?: string
@@ -52,8 +51,6 @@ export interface RelayApiBundleFile {
 
 export interface RelayApiBundle {
   id: string
-  bundleId?: string
-  bundle_id?: string
   note: string | null
   status: 'STAGING' | 'UPLOADING' | 'READY' | 'FAILED'
   sizeBytes: number
@@ -81,8 +78,6 @@ export interface RelayApiBundleResponse {
 export interface RelayApiBundleUpdateResponse {
   bundle: {
     id: string
-    bundleId?: string
-    bundle_id?: string
     note: string | null
     folderId: string | null
   }
