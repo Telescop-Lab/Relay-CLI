@@ -235,3 +235,7 @@ export interface RelayApiMultipartPartsResponse {
 export interface RelayApiMultipartCompleteResponse {
   success: boolean
 }
+
+export interface RelayApiMultipartListResponse {
+  parts: Array<{ partNumber: number; etag: string }>
+}

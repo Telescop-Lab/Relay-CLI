@@ -6,6 +6,7 @@ import type { RelayHttpClient } from '../transport/http-client.js'
 import type {
   RelayApiMultipartCompleteResponse,
   RelayApiMultipartInitResponse,
+  RelayApiMultipartListResponse,
   RelayApiMultipartPartsResponse,
 } from '../transport/types.js'
 
@@ -21,6 +22,10 @@ export const MAX_MULTIPART_PARTS = 10_000
 const DEFAULT_MAX_CONCURRENCY = 4
 const MAX_PART_RETRIES = 3
 const RETRY_BASE_DELAY_MS = 500
+// How many times the whole multipart session may be retried in-process before
+// aborting. Combined with re-listing already-uploaded parts, this provides
+// resumable uploads across transient network failures without restarting init.
+const MAX_SESSION_RETRIES = 5
 
 export interface MultipartUploadContext {
   client: RelayHttpClient
@@ -65,23 +70,43 @@ export async function uploadMultipartFile(context: MultipartUploadContext): Prom
     )
   }
 
-  try {
-    const etags = await uploadParts(context, uploadId, partSize, partCount)
+  // In-process resume state: parts already on R2 from a previous attempt of
+  // this call, keyed by partNumber (1-based) → ETag. On the first pass this
+  // is empty, so every part uploads; after a transient failure we re-list
+  // what R2 holds and only send the remaining parts.
+  let uploadedEtags = new Map<number, string>()
 
-    await client.requestJson<RelayApiMultipartCompleteResponse>({
-      method: 'POST',
-      path: `/api/bundles/${bundleId}/files/${fileId}/multipart/complete`,
-      accessToken,
-      query: { workspaceId },
-      body: {
-        uploadId,
-        parts: etags.map((etag, index) => ({ partNumber: index + 1, etag })),
-      },
-    })
-  } catch (error) {
-    await abortUpload(context, uploadId)
-    throw error
-  }
+  for (let attempt = 0; ; attempt += 1) {
+      try {
+        const etags = await uploadParts(context, uploadId, partSize, partCount, uploadedEtags)
+
+        await client.requestJson<RelayApiMultipartCompleteResponse>({
+          method: 'POST',
+          path: `/api/bundles/${bundleId}/files/${fileId}/multipart/complete`,
+          accessToken,
+          query: { workspaceId },
+          body: {
+            uploadId,
+            parts: etags.map((etag, index) => ({ partNumber: index + 1, etag })),
+          },
+        })
+        return
+      } catch (error) {
+        if (attempt >= MAX_SESSION_RETRIES || !isRetryableUploadError(error)) {
+          // Giving up on this session — release it so the parts don't linger.
+          await abortUpload(context, uploadId)
+          throw error
+        }
+        await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt)
+        try {
+          uploadedEtags = await listUploadedParts(context, uploadId)
+        } catch (listError) {
+          // Can't determine what's already stored; abort to avoid a dangling session.
+          await abortUpload(context, uploadId)
+          throw error
+        }
+      }
+    }
 }
 
 async function uploadParts(
@@ -89,19 +114,30 @@ async function uploadParts(
   uploadId: string,
   partSize: number,
   partCount: number,
+  uploadedEtags: Map<number, string>,
 ): Promise<string[]> {
   const { client, accessToken, workspaceId, bundleId, fileId, filePath } = context
 
-  // Sign every part URL up front. R2 part URLs are valid for an hour, which is
-  // enough for a single part on all but the slowest connections; a part that
-  // still expires is transparently re-signed and retried below.
-  const partNumbers = Array.from({ length: partCount }, (_, index) => index + 1)
+  const etags = new Array<string>(partCount)
+  for (const [partNumber, etag] of uploadedEtags) {
+    if (partNumber >= 1 && partNumber <= partCount) {
+      etags[partNumber - 1] = etag
+    }
+  }
+
+  // Only request upload URLs for parts we still need; parts already on R2 are
+  // skipped on resume.
+  const missingPartNumbers: number[] = []
+  for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
+    if (!etags[partNumber - 1]) missingPartNumbers.push(partNumber)
+  }
+
   const signed = await client.requestJson<RelayApiMultipartPartsResponse>({
     method: 'POST',
     path: `/api/bundles/${bundleId}/files/${fileId}/multipart/parts`,
     accessToken,
     query: { workspaceId },
-    body: { uploadId, partNumbers },
+    body: { uploadId, partNumbers: missingPartNumbers },
   })
   const urlByPart = new Map(signed.data.parts.map((part) => [part.partNumber, part.url]))
 
@@ -120,14 +156,14 @@ async function uploadParts(
     return url
   }
 
-  const etags = new Array<string>(partCount)
-  let nextPart = 1
+  let nextIndex = 0
   const concurrency = resolveConcurrency()
 
   const worker = async (): Promise<void> => {
     while (true) {
-      const partNumber = nextPart++
-      if (partNumber > partCount) return
+      const partNumber = missingPartNumbers[nextIndex]
+      nextIndex += 1
+      if (partNumber === undefined) return
 
       const etag = await uploadPartWithRetry({
         filePath,
@@ -140,10 +176,25 @@ async function uploadParts(
     }
   }
 
-  const workerCount = Math.min(concurrency, partCount)
+  const workerCount = Math.min(concurrency, missingPartNumbers.length)
   await Promise.all(Array.from({ length: workerCount }, () => worker()))
 
   return etags
+}
+
+async function listUploadedParts(
+  context: MultipartUploadContext,
+  uploadId: string,
+): Promise<Map<number, string>> {
+  const { client, accessToken, workspaceId, bundleId, fileId } = context
+  const response = await client.requestJson<RelayApiMultipartListResponse>({
+    method: 'POST',
+    path: `/api/bundles/${bundleId}/files/${fileId}/multipart/list`,
+    accessToken,
+    query: { workspaceId },
+    body: { uploadId },
+  })
+  return new Map(response.data.parts.map((part) => [part.partNumber, part.etag]))
 }
 
 async function uploadPartWithRetry(options: {
