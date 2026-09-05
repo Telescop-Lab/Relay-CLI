@@ -157,6 +157,7 @@ async function uploadParts(
   }
 
   let nextIndex = 0
+  let firstError: unknown = null
   const concurrency = resolveConcurrency()
 
   const worker = async (): Promise<void> => {
@@ -165,19 +166,31 @@ async function uploadParts(
       nextIndex += 1
       if (partNumber === undefined) return
 
-      const etag = await uploadPartWithRetry({
-        filePath,
-        partNumber,
-        partSize,
-        initialUrl: urlByPart.get(partNumber),
-        signOne,
-      })
-      etags[partNumber - 1] = etag
+      try {
+        const etag = await uploadPartWithRetry({
+          filePath,
+          partNumber,
+          partSize,
+          initialUrl: urlByPart.get(partNumber),
+          signOne,
+        })
+        etags[partNumber - 1] = etag
+      } catch (error) {
+        // Record the first failure but keep uploading the remaining parts.
+        // Promise.all would fast-fail and abandon in-flight parts whose ETags
+        // were not yet recorded; draining the queue first lets the session
+        // retry re-list only the parts that genuinely failed and skip the rest.
+        if (firstError === null) firstError = error
+      }
     }
   }
 
   const workerCount = Math.min(concurrency, missingPartNumbers.length)
   await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+  if (firstError !== null) {
+    throw firstError
+  }
 
   return etags
 }
