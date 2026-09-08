@@ -15,6 +15,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "node build.mjs",
     "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
