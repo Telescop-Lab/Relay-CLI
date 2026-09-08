@@ -47,25 +47,53 @@ export class CliOutput {
     }
 
     const headers = Object.keys(rows[0])
-    const widths = headers.map((header) => {
+    const separator = '  '
+
+    // Cap each column so a single oversized free-text value (e.g. a 500-char
+    // note) cannot blow the whole layout off the screen.
+    const naturalWidths = headers.map((header) => {
       const values = rows.map((row) => stringifyTableValue(row[header]))
-      return Math.max(header.length, ...values.map((value) => value.length))
+      const longest = Math.max(header.length, ...values.map((value) => value.length))
+      return Math.min(longest, MAX_COLUMN_WIDTH)
     })
 
+    // On a TTY, shrink the widest columns (down to their header length) until
+    // the table fits the terminal width, avoiding soft-wrap misalignment.
+    let widths = naturalWidths
+    const terminalWidth = this.availableColumns()
+    if (terminalWidth) {
+      const totalWidth =
+        widths.reduce((sum, width) => sum + width, 0) + separator.length * (widths.length - 1)
+      if (totalWidth > terminalWidth) {
+        widths = shrinkToFit(widths, headers, terminalWidth, separator.length)
+      }
+    }
+
     const headerLine = headers
-      .map((header, index) => header.padEnd(widths[index]))
-      .join('  ')
-    const divider = widths.map((width) => '-'.repeat(width)).join('  ')
+      .map((header, index) => truncateText(header, widths[index]).padEnd(widths[index]))
+      .join(separator)
+    const divider = widths.map((width) => '-'.repeat(width)).join(separator)
 
     this.writeLine(headerLine)
     this.writeLine(divider)
 
     for (const row of rows) {
       const line = headers
-        .map((header, index) => stringifyTableValue(row[header]).padEnd(widths[index]))
-        .join('  ')
+        .map((header, index) =>
+          truncateText(stringifyTableValue(row[header]), widths[index]).padEnd(widths[index]),
+        )
+        .join(separator)
       this.writeLine(line)
     }
+  }
+
+  private availableColumns(): number | undefined {
+    if (!process.stdout.isTTY) {
+      return undefined
+    }
+
+    const columns = process.stdout.columns
+    return typeof columns === 'number' && columns > 0 ? columns : undefined
   }
 
   writeList(items: string[]) {
@@ -144,6 +172,53 @@ function stringifyTableValue(value: TableValue) {
   }
 
   return String(value)
+}
+
+const MAX_COLUMN_WIDTH = 40
+
+function truncateText(value: string, maxWidth: number): string {
+  if (value.length <= maxWidth) {
+    return value
+  }
+
+  if (maxWidth <= 1) {
+    return '…'
+  }
+
+  return `${value.slice(0, maxWidth - 1)}…`
+}
+
+function shrinkToFit(
+  widths: number[],
+  headers: string[],
+  terminalWidth: number,
+  separatorLength: number,
+): number[] {
+  const result = [...widths]
+  const minWidths = headers.map((header) => header.length)
+
+  const overflow = () =>
+    result.reduce((sum, width) => sum + width, 0) + separatorLength * (result.length - 1) - terminalWidth
+
+  while (overflow() > 0) {
+    let shrinkIndex = -1
+    let widest = -1
+
+    for (let index = 0; index < result.length; index += 1) {
+      if (result[index] > minWidths[index] && result[index] > widest) {
+        widest = result[index]
+        shrinkIndex = index
+      }
+    }
+
+    if (shrinkIndex === -1) {
+      break
+    }
+
+    result[shrinkIndex] -= 1
+  }
+
+  return result
 }
 
 function jsonReplacer(_key: string, value: unknown) {

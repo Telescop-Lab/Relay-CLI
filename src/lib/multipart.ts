@@ -16,7 +16,7 @@ import type {
  */
 export const MULTIPART_THRESHOLD_BYTES = 16 * 1024 * 1024
 
-/** S3/R2 hard cap on the number of parts in a single multipart upload. */
+/** Object-storage hard cap on the number of parts in a single multipart upload. */
 export const MAX_MULTIPART_PARTS = 10_000
 
 const DEFAULT_MAX_CONCURRENCY = 4
@@ -39,7 +39,7 @@ export interface MultipartUploadContext {
 }
 
 /**
- * Upload a single file via S3/R2 multipart upload:
+ * Upload a single file via object-storage multipart upload:
  *   1. init      — server creates the multipart session (returns uploadId + partSize)
  *   2. parts     — server signs presigned PUT URLs for every part
  *   3. upload    — bounded-concurrency workers PUT each part with per-part retry
@@ -66,14 +66,14 @@ export async function uploadMultipartFile(context: MultipartUploadContext): Prom
     throw new CliError(
       `File ${filePath} would require ${partCount} parts (${partSize} bytes each), ` +
         `exceeding the ${MAX_MULTIPART_PARTS}-part limit`,
-      { hint: 'Increase R2_MULTIPART_PART_SIZE on the server and retry.' },
+      { hint: 'Increase the server-side multipart part size and retry.' },
     )
   }
 
-  // In-process resume state: parts already on R2 from a previous attempt of
-  // this call, keyed by partNumber (1-based) → ETag. On the first pass this
-  // is empty, so every part uploads; after a transient failure we re-list
-  // what R2 holds and only send the remaining parts.
+  // In-process resume state: parts already stored on the object store from a
+  // previous attempt of this call, keyed by partNumber (1-based) → ETag. On
+  // the first pass this is empty, so every part uploads; after a transient
+  // failure we re-list what the store holds and only send the remaining parts.
   let uploadedEtags = new Map<number, string>()
 
   for (let attempt = 0; ; attempt += 1) {
@@ -125,8 +125,8 @@ async function uploadParts(
     }
   }
 
-  // Only request upload URLs for parts we still need; parts already on R2 are
-  // skipped on resume.
+  // Only request upload URLs for parts we still need; parts already uploaded
+  // are skipped on resume.
   const missingPartNumbers: number[] = []
   for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
     if (!etags[partNumber - 1]) missingPartNumbers.push(partNumber)
@@ -253,8 +253,9 @@ async function uploadSinglePart(
     throw new CliError(`Computed empty byte range for part ${partNumber}`)
   }
 
-  // R2/S3 reject chunked part bodies (411 MissingContentLength), so declare
-  // the exact byte length of this part explicitly, just like the single PUT.
+  // Object storage rejects chunked part bodies (411 MissingContentLength), so
+  // declare the exact byte length of this part explicitly, just like the
+  // single PUT.
   const response = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Length': String(length) },

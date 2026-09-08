@@ -1,7 +1,7 @@
 /**
  * Run a worker over a list of items with bounded concurrency, preserving the
  * order of results. Used to upload multiple bundle files in parallel without
- * saturating the connection or R2 with too many simultaneous streams.
+ * saturating the connection or object storage with too many simultaneous streams.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

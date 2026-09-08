@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { createReadStream, createWriteStream } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -48,6 +49,7 @@ type BundleWorkspaceOptions = {
 type BundleListOptions = BundleWorkspaceOptions & {
   folder?: string
   limit?: string | number
+  long?: boolean
 }
 
 type BundleInboxOptions = BundleListOptions & {
@@ -89,6 +91,7 @@ export function createBundleCommand() {
     .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
     .option('--folder <path>', 'Filter to a specific folder path, for example /design/review')
     .option('--limit <n>', 'Maximum number of bundles to return', '20')
+    .option('--long', 'Show additional bundle fields (filesCount, createdAt) in JSON output')
     .option('--include-mine', 'Include bundles created by the current device')
     .action(async (options: BundleInboxOptions, command: Command) => {
       const runtime = await getCommandRuntime(command)
@@ -121,9 +124,9 @@ export function createBundleCommand() {
       const records = presentBundles(response.data.bundles, folderContext.records)
       if (runtime.options.json) {
         runtime.output.writeJson({
-          workspace,
-          bundles: records,
-          nextCursor: response.data.nextCursor,
+          workspace: { id: workspace.id, name: workspace.name },
+          bundles: records.map((item) => projectBundleSummary(item, Boolean(options.long))),
+          nextCursor: decodeNextCursor(response.data.nextCursor),
         })
         return
       }
@@ -147,6 +150,7 @@ export function createBundleCommand() {
     .option('--workspace <workspace-id|name>', 'Workspace to inspect instead of the local default')
     .option('--folder <path>', 'Filter to a specific folder path, for example /design/review')
     .option('--limit <n>', 'Maximum number of bundles to return', '20')
+    .option('--long', 'Show additional bundle fields (filesCount, createdAt) in JSON output')
     .action(async (options: BundleListOptions, command: Command) => {
       const runtime = await getCommandRuntime(command)
       const { client, accessToken } = await requireAuthenticatedService(runtime)
@@ -176,9 +180,9 @@ export function createBundleCommand() {
       const records = presentBundles(response.data.bundles, folderContext.records)
       if (runtime.options.json) {
         runtime.output.writeJson({
-          workspace,
-          bundles: records,
-          nextCursor: response.data.nextCursor,
+          workspace: { id: workspace.id, name: workspace.name },
+          bundles: records.map((item) => projectBundleSummary(item, Boolean(options.long))),
+          nextCursor: decodeNextCursor(response.data.nextCursor),
         })
         return
       }
@@ -695,6 +699,53 @@ function presentBundle(bundle: RelayApiBundle, records: Awaited<ReturnType<typeo
   }
 }
 
+function projectBundleSummary(bundle: ReturnType<typeof presentBundle>, long: boolean) {
+  const base = {
+    id: bundle.id,
+    note: bundle.note,
+    status: bundle.status,
+    deviceName: bundle.deviceName,
+    sizeBytes: bundle.sizeBytes,
+    folderPath: bundle.folderPath,
+  }
+
+  if (!long) {
+    return base
+  }
+
+  return {
+    ...base,
+    filesCount: bundle.filesCount,
+    createdAt: bundle.createdAt,
+  }
+}
+
+type DecodedBundleCursor = {
+  createdAt: string
+  publicId: string
+}
+
+function decodeNextCursor(cursor: string | null | undefined): DecodedBundleCursor | null {
+  if (!cursor) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
+      createdAt?: string
+      publicId?: string
+    }
+
+    if (typeof parsed.createdAt !== 'string' || typeof parsed.publicId !== 'string') {
+      return null
+    }
+
+    return { createdAt: parsed.createdAt, publicId: parsed.publicId }
+  } catch {
+    return null
+  }
+}
+
 function parseLimit(rawLimit: string | number | undefined) {
   const numeric = Number(rawLimit ?? 20)
   if (!Number.isInteger(numeric) || numeric <= 0) {
@@ -755,9 +806,9 @@ async function pushBundleFile(options: {
   const { client, accessToken, serviceUrl, workspaceId, bundleId, file } = options
 
   // Compute the file's SHA-256 once, before registration, so the record stores
-  // it for finalize verification (local storage) and future CAS dedup. R2 does
-  // not validate flexible checksums on presigned PUTs, so we do not send a
-  // checksum header on the wire — TLS covers transport integrity.
+  // it for finalize verification (local storage) and future CAS dedup. Object
+  // storage does not validate flexible checksums on presigned PUTs, so we do
+  // not send a checksum header on the wire — TLS covers transport integrity.
   const checksumSha256 = await sha256FileHex(file.absolutePath)
 
   // Register the file exactly once. This creates a BundleFile record server-side,
@@ -850,7 +901,8 @@ async function uploadFileToUrl(options: {
   const target = resolveTransferTarget(options.uploadUrl, options.serviceUrl)
 
   // Local/dev fallback (relative, authenticated) always uses a single PUT.
-  // Multipart only applies to direct R2 presigned uploads and larger files.
+  // Multipart only applies to direct object-storage presigned uploads and
+  // larger files.
   if (target.requiresAuth || options.sizeBytes < MULTIPART_THRESHOLD_BYTES) {
     await singlePutFile(options.filePath, options.mimeType, target, options.accessToken)
     return 'single'
@@ -878,7 +930,7 @@ async function singlePutFile(
   const fileStats = await fs.stat(filePath)
   const headers: Record<string, string> = {
     'Content-Type': mimeType,
-    // R2/S3 presigned PUT uploads reject chunked bodies (411 MissingContentLength).
+    // Object-storage presigned PUT uploads reject chunked bodies (411 MissingContentLength).
     // Native fetch streams a ReadStream via chunked transfer unless we declare
     // the length explicitly, so stat the file and set Content-Length ourselves.
     'Content-Length': String(fileStats.size),

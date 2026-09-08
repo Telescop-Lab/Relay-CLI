@@ -197,9 +197,14 @@ function isCliError(error: unknown): error is CliError {
 
 function toHttpCliError(status: number, body: RelayApiErrorBody | undefined, url: string) {
   const message = body?.message ?? body?.error ?? `HTTP ${status} from ${url}`
+  const hint = status === 401 || status === 403
+    ? 'Log in again or provide a valid RELAY_TOKEN.'
+    : status === 413 && body?.error === 'QUOTA_EXCEEDED'
+      ? 'Delete bundles to free space, or raise STORAGE_QUOTA_BYTES on the server.'
+      : undefined
   return createHttpError(message, {
     status,
     details: body,
-    hint: status === 401 || status === 403 ? 'Log in again or provide a valid RELAY_TOKEN.' : undefined,
+    hint,
   })
 }
