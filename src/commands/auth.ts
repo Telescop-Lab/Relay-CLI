@@ -10,7 +10,6 @@ import type { ResponseEnvelope } from '../transport/http-client.js'
 import type {
   RelayApiAuthMeResponse,
   RelayApiAuthSessionResponse,
-  RelayApiDevicesResponse,
   RelayApiForgetDeviceResponse,
   RelayApiLoginResponse,
   RelayApiSuccessResponse,
