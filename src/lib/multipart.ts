@@ -100,8 +100,12 @@ export async function uploadMultipartFile(context: MultipartUploadContext): Prom
         await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt)
         try {
           uploadedEtags = await listUploadedParts(context, uploadId)
-        } catch (listError) {
-          // Can't determine what's already stored; abort to avoid a dangling session.
+        } catch {
+          // Can't determine what's already stored; abort to avoid a dangling
+          // session. The list failure is deliberately not bound or reported:
+          // the error thrown below is the original one, which is what the
+          // operator has to act on, and a failing `list` is another symptom of
+          // the same outage rather than an independent cause worth chaining.
           await abortUpload(context, uploadId)
           throw error
         }
