@@ -1,101 +1,85 @@
 # Relay CLI
 
-Relay 的命令行客户端。用于在设备之间投递文件 bundle、管理工作区、文件夹与账号设备。
+> **⚠️ 内测中 / In Alpha** — Relay 服务暂未对公众开放，敬请期待。To be released shortly. 
 
-The command-line client for Relay. It hands off file bundles between devices, and manages workspaces, folders, and account devices.
+## Relay 是什么？/ What is Relay?
 
-## 环境要求 / Requirements
+Relay 是面向多设备 Agent 用户的异步制品收件箱。 上传端可以把带任务上下文的产物投递到指定工作区；接收设备即使当时离线，也可以在之后上线使用简单命令拉取，整个过程具有明确状态和结构化记录。Relay 聚焦 Git 不适合承载、但需要随任务一起交付的生成产物，例如构建包、测试证据、日志、数据集、模型文件、截图及其他非结构化制品。
 
-- Node.js 20+
+Relay is an asynchronous artifact inbox for users/agents running tasks across multiple devices. A sender delivers artifacts, together with their task context, into a chosen workspace; a receiving device can retrieve it later — even if it was offline at the time — and pull them with a single command, with explicit status and a structured record throughout. Relay focuses on generated artifacts that Git is not suited to carry but that must be delivered alongside the task: build packages, test evidence, logs, datasets, model files, screenshots, and other unstructured artifacts.
 
-## 安装 / Install
 
-```bash
-npm install -g relay-cli
+**四个核心概念 / Four core concepts**
+- **Workspace (工作区)** — 以项目划分的交接空间：设备在同一工作区内交接文件。/ A project-scoped handoff space; devices hand off files within a workspace.
+- **Bundle (交接件)** — 一次完整的交接单元（文件 + 意图 note + 来源设备）。/ One complete handoff unit (files + an intent note + the source device).
+- **Device (设备)** — 一等身份：标识「谁在交接」/ A first-class identity: who is handing off.
+- **History (历史)** — 一个工作区内只增不改的交接记录，形成审计链 / An append-only record of handoffs within a workspace, forming an audit trail. 
+
+## 快速开始 / Quick start
+
+**前提 / Requirements**：Node.js 20.x
+
+### 安装 / Install
+
+Windows（PowerShell）：
+
+```powershell
+.\skills\scripts\setup.ps1 -RelayUrl "<relay-service-url>" -RelayUser "<username>"
 ```
 
-## 快速上手 / Quick start
+Linux / macOS：
 
 ```bash
-# 1. 配置 Relay 服务地址（仅支持 https，本地开发可用 http://127.0.0.1:<port>）
-#    Point the CLI at a Relay service URL (https only; local dev may use http://127.0.0.1:<port>)
-relay config set url <your-relay-service-url>
-
-# 2. 登录（首次会登记当前环境为一台设备）
-#    Log in (the first login registers this environment as a device)
-relay login --identifier <username-or-email>
-
-# 3. 推送文件（示例：推送到自动创建的 /design/review 目录）
-#    Push files (example: push into an auto-created /design/review folder)
-relay bundle push ./dist --note "v0.1.0 build" --add-folder /design/review
+RELAY_URL="<relay-service-url>" RELAY_USER="<username>" ./skills/scripts/setup.sh
 ```
 
-注册新账号使用 `relay signup` / Use `relay signup` to create a new account:
+> signup / login 为交互式，需人工输入账号密码。内测期间 `<relay-service-url>` 尚未开放。
+
+### 诊断 / Verify
+
+安装完成后，运行诊断脚本确认 CLI 已装好、已登录、服务可达：
+
+After setup, run the doctor script to confirm the CLI is installed, logged in, and reachable:
+
+Windows（PowerShell）：
+
+```powershell
+.\skills\scripts\doctor.ps1
+```
+
+Linux / macOS：
 
 ```bash
-relay signup --username <name> --device <device-name>
+./skills/scripts/doctor.sh
 ```
 
-## 多账号（Profile）/ Multiple accounts
+退出码 `0` 表示就绪，可开始交接；非 `0` 会指出缺失项。
 
-CLI 会自动按用户名建立独立的 profile，多个账号可并行共存、互不覆盖：
+Exit code `0` means ready to go; any non-zero code indicates missing installation.
 
-The CLI creates a separate profile per username automatically, so multiple accounts can coexist without overwriting each other:
+### 交接文件 / Hand off files
 
 ```bash
-relay login --identifier alice   # 自动落到 profiles.alice / lands in profiles.alice
-relay login --identifier bob     # 自动落到 profiles.bob / lands in profiles.bob
-
-relay config profile list        # 查看所有 profile / list all profiles
-relay config profile use alice   # 切换当前 profile / switch the active profile
+relay bundle push ./dist --note "v0.1.0 build" --add-folder /design/review   # 发送 / send
+relay bundle inbox --json                                                      # 查看待接收 / see incoming
+relay bundle pull <bundle-id> --output <dir>                                   # 接收 / receive
 ```
 
-也可以显式指定 profile / You can also pass a profile explicitly:
+所有命令支持 `--json`，面向脚本与 agent；`relay tools schema` 输出机器可读的命令清单。
 
-```bash
-relay config set url <url> --profile work
-relay --profile work login --identifier alice
-```
+Every command supports `--json` for scripts and agents; `relay tools schema` emits a machine-readable command list.
 
-## 全局选项 / Global options
+### 命令参考 / Command reference
 
-| 选项 Option | 说明 Description |
-|------|------|
-| `--json` | 以 JSON 输出到 stdout，适合脚本/Agent / Emit JSON to stdout for scripts and agents |
-| `--debug` | 输出调试诊断到 stderr / Print debug diagnostics to stderr |
-| `--no-color` | 禁用 ANSI 颜色与样式 / Disable ANSI color and styles |
-| `--profile <name>` | 使用指定 profile / Use a named profile |
-| `-h, --help` | 显示帮助 / Show help |
-| `-V, --version` | 显示版本 / Show the CLI version |
+agent 可通过 [Relay Skill](skills/) 自动调用；完整命令与参数见 [skills/reference/commands.md](skills/reference/commands.md)（人工维护的参考文档；需要实时清单时运行 `relay tools schema`）。
 
-## 命令概览 / Commands
+Agents can use the [Relay Skill](skills/) to drive the CLI; the full command and flag reference is in [skills/reference/commands.md](skills/reference/commands.md) (hand-maintained; run `relay tools schema` for the live list).
 
-| 命令 Command | 说明 Description |
-|------|------|
-| `relay config` | 配置服务地址与 profile / Configure service URL and profiles |
-| `relay signup / login / logout / whoami` | 注册、登录、退出、查看当前身份 / Sign up, log in/out, show identity |
-| `relay devices` | 管理账号下的设备 / Manage account devices |
-| `relay ws` | 管理工作区（list/use/create/info/rename/delete）/ Manage workspaces |
-| `relay ws message` | 读写工作区共享笔记 / Read/write the shared workspace note |
-| `relay folder` | 管理工作区文件夹（list/create/rename/move/delete）/ Manage workspace folders |
-| `relay bundle` | 投递文件（inbox/list/show/push/pull/edit/restore/delete）/ Hand off file bundles |
-| `relay history` | 查看历史事件 / View the audit history |
-| `relay storage` | 查看存储配额 / View storage quota |
-| `relay export` | 导出工作区数据 / Export workspace data |
-| `relay tools schema` | 输出全部命令的机器可读 JSON Schema / Emit a machine-readable schema of every command |
+## 完整协议 / Full protocol
 
-用 `relay <command> --help` 查看任意命令的完整用法。
+术语、生命周期、非目标与对象示例见 [relay-concept-zh.md](docs/spec/relay-concept-zh.md)。
 
-Run `relay <command> --help` for the full usage of any command.
-
-## 从源码构建 / Build from source
-
-```bash
-cd cli
-npm install
-node build.mjs        # 产出 dist/index.cjs（单文件）/ produces dist/index.cjs (single file)
-```
+Terminology, lifecycle, non-goals, and object examples live in [relay-concept-en.md](docs/spec/relay-concept-en.md).
 
 ## License
-
 [Apache-2.0](./LICENSE)

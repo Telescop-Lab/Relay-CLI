@@ -137,14 +137,6 @@ export class ConfigStore {
     this.store.set('profiles', profiles)
   }
 
-  snapshot(profile = this.getCurrentProfile()) {
-    return {
-      profile,
-      serviceUrl: this.getServiceUrl(profile),
-      defaultWorkspace: this.getDefaultWorkspace(profile),
-    }
-  }
-
   private getProfileConfig(profile: string) {
     const profiles = this.store.get('profiles') ?? {}
     return profiles[profile] ?? {}

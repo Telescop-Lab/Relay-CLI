@@ -49,12 +49,23 @@ async function rotateTokens(runtime: CliRuntime, serviceUrl: string): Promise<st
   })
 
   if (!res.ok) {
-    // Refresh token is also expired or revoked
-    await runtime.credentials.setAccessToken(profile, null)
-    await runtime.credentials.setRefreshToken(profile, null)
-    throw new CliError('Session expired — please log in again', {
-      code: 'AUTH_REQUIRED',
-      exitCode: ExitCode.AuthFailure,
+    // A 401 means the refresh token itself is dead (expired, revoked, or
+    // rotated away). Only then do we clear the local session. Transient
+    // failures (5xx, 429) must NOT wipe credentials — the refresh token is
+    // still valid and the next command can simply retry.
+    if (res.status === 401) {
+      await runtime.credentials.setAccessToken(profile, null)
+      await runtime.credentials.setRefreshToken(profile, null)
+      throw new CliError('Session expired — please log in again', {
+        code: 'AUTH_REQUIRED',
+        exitCode: ExitCode.AuthFailure,
+      })
+    }
+
+    throw new CliError(`Token refresh failed (HTTP ${res.status})`, {
+      code: 'RUNTIME_ERROR',
+      exitCode: ExitCode.RuntimeError,
+      hint: 'The Relay service returned an error while refreshing your session. Retry the command.',
     })
   }
 
@@ -82,7 +93,7 @@ export async function requireAuthenticatedService(runtime: CliRuntime) {
     throw new CliError('No active Relay session for the configured service', {
       code: 'AUTH_REQUIRED',
       exitCode: ExitCode.AuthFailure,
-      hint: 'Run relay login first, or set RELAY_TOKEN for one-off scripted access.',
+      hint: 'Run relay login to start a session.',
     })
   }
 

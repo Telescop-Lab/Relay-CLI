@@ -136,6 +136,14 @@ async function uploadParts(
     if (!etags[partNumber - 1]) missingPartNumbers.push(partNumber)
   }
 
+  // Resume fast path: every part is already on the object store, so there is
+  // nothing to upload — return the collected ETags directly. (Calling the
+  // server with an empty partNumbers array would 400 with
+  // "uploadId and partNumbers are required".)
+  if (missingPartNumbers.length === 0) {
+    return etags
+  }
+
   const signed = await client.requestJson<RelayApiMultipartPartsResponse>({
     method: 'POST',
     path: `/api/bundles/${bundleId}/files/${fileId}/multipart/parts`,

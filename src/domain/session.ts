@@ -31,12 +31,3 @@ export interface RelayCredentialState {
   profiles: Record<string, StoredServiceCredentials>
   summaries: Record<string, SessionSummary>
 }
-
-export interface CredentialSnapshot {
-  backend: 'keychain' | 'state-file'
-  profile: string
-  serviceUrl: string | null
-  hasAccessToken: boolean
-  bindingCount: number
-  summary: SessionSummary | null
-}

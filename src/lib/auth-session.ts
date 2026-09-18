@@ -1,5 +1,5 @@
 import type { SessionSummary } from '../domain/session.js'
-import type { RelayApiAuthSessionResponse, RelayApiDevice, RelayApiUser } from '../transport/types.js'
+import type { RelayApiDevice, RelayApiUser } from '../transport/types.js'
 import type { CliRuntime } from './runtime.js'
 
 type SessionIdentity = {
@@ -104,13 +104,5 @@ export function sessionPayload(options: {
     device: options.device,
     defaultWorkspace: options.defaultWorkspace,
     hasDeviceBinding: options.hasDeviceBinding,
-  }
-}
-
-export function sessionFromAuthResponse(response: RelayApiAuthSessionResponse) {
-  return {
-    accessToken: response.token,
-    user: response.user,
-    device: response.device,
   }
 }

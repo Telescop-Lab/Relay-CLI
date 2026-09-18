@@ -1,7 +1,6 @@
 import Conf from 'conf'
 
 import type {
-  CredentialSnapshot,
   RelayCredentialState,
   SessionSummary,
   StoredBindingRecord,
@@ -11,7 +10,6 @@ import {
   DEFAULT_PROFILE,
   RELAY_DISABLE_KEYCHAIN_ENV,
   RELAY_HOME,
-  RELAY_TOKEN_ENV,
 } from './constants.js'
 import { normalizeProfileName } from './config-store.js'
 
@@ -55,11 +53,6 @@ export class CredentialStore {
   }
 
   async getAccessToken(profile: string) {
-    const envToken = process.env[RELAY_TOKEN_ENV]?.trim()
-    if (envToken) {
-      return envToken
-    }
-
     const profileKey = normalizeProfileName(profile)
     const backend = await this.getKeychainBackend()
     if (backend) {
@@ -246,13 +239,6 @@ export class CredentialStore {
     return summaries[profileKey] ?? null
   }
 
-  clearSessionSummary(profile: string) {
-    const profileKey = normalizeProfileName(profile)
-    const summaries = this.store.get('summaries')
-    delete summaries[profileKey]
-    this.store.set('summaries', summaries)
-  }
-
   setSessionSummary(summary: SessionSummary | null) {
     if (!summary) {
       return
@@ -266,21 +252,6 @@ export class CredentialStore {
     }
     this.store.set('summaries', summaries)
     this.store.set('currentProfile', profileKey)
-  }
-
-  async getSnapshot(profile: string): Promise<CredentialSnapshot> {
-    const profileKey = normalizeProfileName(profile)
-    const backend = (await this.getKeychainBackend()) ? 'keychain' : 'state-file'
-    const record = this.getProfileRecord(profileKey)
-
-    return {
-      backend,
-      profile: profileKey,
-      serviceUrl: record.serviceUrl ?? null,
-      hasAccessToken: Boolean(await this.getAccessToken(profileKey)),
-      bindingCount: record.bindings.length,
-      summary: this.getSessionSummary(profileKey),
-    }
   }
 
   private getProfileRecord(profileKey: string) {

@@ -2,23 +2,26 @@ import type { CommanderError } from 'commander'
 
 import { ExitCode, type ExitCodeValue } from './exit-codes.js'
 
-export type CliErrorCode =
-  | 'AUTH_REQUIRED'
-  | 'COMMAND_ERROR'
-  | 'CONFIG_ERROR'
-  | 'EDITOR_ERROR'
-  | 'HTTP_ERROR'
-  | 'INVALID_FOLDER_PATH'
-  | 'INVALID_PROFILE'
-  | 'INVALID_SERVICE_URL'
-  | 'PROFILE_IN_USE'
-  | 'PROFILE_NOT_FOUND'
-  | 'QUOTA_EXCEEDED'
-  | 'RUNTIME_ERROR'
-  | 'WORKSPACE_MESSAGE_CONFLICT'
-  | 'WORKSPACE_AMBIGUOUS'
-  | 'WORKSPACE_NOT_FOUND'
-  | 'WORKSPACE_REQUIRED'
+const CLI_ERROR_CODES = [
+  'AUTH_REQUIRED',
+  'COMMAND_ERROR',
+  'CONFIG_ERROR',
+  'EDITOR_ERROR',
+  'HTTP_ERROR',
+  'INVALID_FOLDER_PATH',
+  'INVALID_PROFILE',
+  'INVALID_SERVICE_URL',
+  'PROFILE_IN_USE',
+  'PROFILE_NOT_FOUND',
+  'QUOTA_EXCEEDED',
+  'RUNTIME_ERROR',
+  'WORKSPACE_MESSAGE_CONFLICT',
+  'WORKSPACE_AMBIGUOUS',
+  'WORKSPACE_NOT_FOUND',
+  'WORKSPACE_REQUIRED',
+] as const
+
+export type CliErrorCode = (typeof CLI_ERROR_CODES)[number]
 
 type CliErrorOptions = {
   code?: CliErrorCode
@@ -157,21 +160,7 @@ export function toCliError(error: unknown): CliError {
 }
 
 function isCliErrorCode(value: unknown): value is CliErrorCode {
-  return typeof value === 'string' && [
-    'AUTH_REQUIRED',
-    'COMMAND_ERROR',
-    'CONFIG_ERROR',
-    'EDITOR_ERROR',
-    'HTTP_ERROR',
-    'INVALID_FOLDER_PATH',
-    'INVALID_SERVICE_URL',
-    'QUOTA_EXCEEDED',
-    'RUNTIME_ERROR',
-    'WORKSPACE_MESSAGE_CONFLICT',
-    'WORKSPACE_AMBIGUOUS',
-    'WORKSPACE_NOT_FOUND',
-    'WORKSPACE_REQUIRED',
-  ].includes(value)
+  return typeof value === 'string' && (CLI_ERROR_CODES as readonly string[]).includes(value)
 }
 
 function exitCodeForCliErrorCode(code: CliErrorCode): ExitCodeValue {

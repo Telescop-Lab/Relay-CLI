@@ -79,7 +79,3 @@ export function describeHistoryType(type: string) {
       return type.toLowerCase().replace(/_/g, ' ')
   }
 }
-
-export function renderOptionalNote(note: string | null | undefined) {
-  return note ? `[${note}]` : '[]'
-}

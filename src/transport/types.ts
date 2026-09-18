@@ -13,8 +13,6 @@ export interface RelayApiDevice {
   createdAt: string
   lastSeenAt: string | null
   revokedAt: string | null
-  hasBinding?: boolean
-  bindingLastUsedAt?: string | null
   isCurrent?: boolean
 }
 
