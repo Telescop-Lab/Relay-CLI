@@ -182,7 +182,7 @@ relay bundle push ./dist --note "continue the codegen from this draft" --add-fol
 
 ### Lifecycle notes
 
-- `bundle pull` requires `--output <dir>` and refuses to overwrite existing files.
+- `bundle pull` requires `--output <dir>` and refuses to overwrite existing files. To pull into the current directory, use `--output .`.
 - `bundle edit` needs at least one of `--note`, `--folder` or `--add-folder`; the latter two are mutually exclusive here as well.
 - `bundle delete` is a soft delete into a **30-day-recoverable trash**, and `bundle restore` brings it back. The bytes are only released once the trash is purged, so deleting a stale bundle does not immediately free quota.
 
