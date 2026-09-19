@@ -4,9 +4,13 @@
 
 ## Relay 是什么？/ What is Relay?
 
-Relay 是面向多设备 Agent 用户的异步制品收件箱。 上传端可以把带任务上下文的产物投递到指定工作区；接收设备即使当时离线，也可以在之后上线使用简单命令拉取，整个过程具有明确状态和结构化记录。Relay 聚焦 Git 不适合承载、但需要随任务一起交付的生成产物，例如构建包、测试证据、日志、数据集、模型文件、截图及其他非结构化制品。
+Relay 是跨设备的异步文件交接站。上传端投递时无需了解接收方状态，每个任务自带上下文；接收端一条命令拉取，全程结构化记录。
 
-Relay is an asynchronous artifact inbox for users/agents running tasks across multiple devices. A sender delivers artifacts, together with their task context, into a chosen workspace; a receiving device can retrieve it later — even if it was offline at the time — and pull them with a single command, with explicit status and a structured record throughout. Relay focuses on generated artifacts that Git is not suited to carry but that must be delivered alongside the task: build packages, test evidence, logs, datasets, model files, screenshots, and other unstructured artifacts.
+Relay 提供 CLI 和 Web UI 双入口，聚焦 Git 不适合承载、但需要随任务一起交付的文件。
+
+Relay relays files across your devices, asynchronously. Push without needing to know the receiver's path or whether it's online — every task carries its own context; pull with a single command. Every handoff leaves a structured record.
+
+Relay offers both a CLI and a Web UI, focused on files that don't belong in Git but still need to move with the task.
 
 
 **四个核心概念 / Four core concepts**
